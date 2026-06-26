@@ -1,5 +1,7 @@
 # Dj MAD — AI Video Tool
 
+**Version 0.2.0**
+
 A local-first desktop app for **AI video generation** — text-to-video,
 image-to-video, **beat-synced music videos**, and **perfect-looping Spotify
 Canvas** clips — branded **Dj MAD**, auto-adapts to your hardware (NVIDIA CUDA

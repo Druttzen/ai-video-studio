@@ -6,4 +6,4 @@ hands finished frames to the export step. The UI and orchestration logic live
 elsewhere; this package is intentionally a stateless-ish inference worker.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

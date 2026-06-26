@@ -1,6 +1,6 @@
 [project]
 name = "ave-engine"
-version = "0.1.0"
+version = "0.2.0"
 description = "AI Video Studio model engine (FastAPI sidecar for diffusion video models)"
 requires-python = ">=3.10,<3.13"
 dynamic = ["dependencies"]
