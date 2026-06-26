@@ -51,8 +51,9 @@ export default function Settings({ health }: { health: Health | null }) {
         <div className="card">
           <h3>Tips</h3>
           <div className="desc">
-            <p>Models download to the folder above (~28 GB for LTX). Use drive E: if C: is low on space — set{" "}
-              <code className="mono">AVE_DATA_DIR</code> before launching.</p>
+            <p>Models download to the folder above (~28 GB for LTX). Everything lives under{" "}
+              <code className="mono">F:\ai-video-studio\data</code> — override with{" "}
+              <code className="mono">AVE_DATA_DIR</code> only if needed.</p>
             <p style={{ marginTop: 8 }}>
               On 12 GB GPUs, use <b>Balanced</b> or <b>Fast</b> presets. Quality needs 16+ GB VRAM.
             </p>
