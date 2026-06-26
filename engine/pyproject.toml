@@ -1,0 +1,16 @@
+[project]
+name = "ave-engine"
+version = "0.1.0"
+description = "AI Video Studio model engine (FastAPI sidecar for diffusion video models)"
+requires-python = ">=3.10,<3.13"
+dynamic = ["dependencies"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["ave_engine", "ave_engine.models", "ave_engine.pipeline"]
+
+[tool.setuptools.dynamic]
+dependencies = { file = ["requirements.txt"] }

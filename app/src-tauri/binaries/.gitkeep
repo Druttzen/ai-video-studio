@@ -1,0 +1,2 @@
+# The packaged Python engine (PyInstaller output) is copied here by
+# scripts/build.ps1 before `tauri build`. Kept empty in source control.

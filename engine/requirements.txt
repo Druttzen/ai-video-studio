@@ -1,0 +1,36 @@
+# --- AI Video Studio :: Python model engine dependencies ---
+#
+# IMPORTANT: install PyTorch FIRST with the correct compute backend.
+#   NVIDIA / CUDA 12.x:
+#     pip install torch --index-url https://download.pytorch.org/whl/cu124
+#   CPU only:
+#     pip install torch --index-url https://download.pytorch.org/whl/cpu
+#
+# Then: pip install -r requirements.txt
+
+# Web server (sidecar API)
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic>=2.7
+
+# Hugging Face / diffusion stack
+huggingface_hub>=0.25
+diffusers>=0.32
+transformers>=4.46
+accelerate>=1.0
+safetensors>=0.4
+sentencepiece>=0.2
+protobuf>=4.25
+tiktoken>=0.7
+
+# Media I/O + export
+imageio>=2.34
+imageio-ffmpeg>=0.5
+opencv-python-headless>=4.10
+Pillow>=10.3
+numpy>=1.26
+
+# Audio analysis (beat/tempo/onset detection, loading)
+librosa>=0.10
+soundfile>=0.12
+scipy>=1.11

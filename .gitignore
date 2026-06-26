@@ -1,0 +1,30 @@
+# Node
+node_modules/
+dist/
+*.log
+
+# Rust / Tauri
+target/
+**/target/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+*.egg-info/
+build/
+*.spec.bak
+
+# App data / models / outputs (never commit weights or generated media)
+/data/
+*.mp4
+*.webm
+*.safetensors
+*.ckpt
+*.bin
+
+# OS
+.DS_Store
+Thumbs.db
