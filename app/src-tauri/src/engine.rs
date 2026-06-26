@@ -37,9 +37,8 @@ impl EngineState {
     /// Priority:
     ///   1. `AVE_DATA_DIR` environment variable
     ///   2. `.ave-install-state.json` beside the executable (written by setup)
-    ///   3. Known locations on F:/E: if they already exist
-    ///   4. Tauri per-user app data dir
-    fn data_dir(app: &AppHandle) -> PathBuf {
+    ///   3. `F:\ai-video-studio\data` (single project data tree)
+    fn data_dir(_app: &AppHandle) -> PathBuf {
         if let Ok(dir) = std::env::var("AVE_DATA_DIR") {
             if !dir.is_empty() {
                 return PathBuf::from(dir);
@@ -61,16 +60,7 @@ impl EngineState {
             }
         }
 
-        for candidate in ["F:\\AIVideoStudio\\data", "E:\\AIVideoStudio\\data"] {
-            let p = PathBuf::from(candidate);
-            if p.exists() {
-                return p;
-            }
-        }
-
-        app.path()
-            .app_data_dir()
-            .unwrap_or_else(|_| std::env::temp_dir().join("AIVideoStudio"))
+        PathBuf::from(r"F:\ai-video-studio\data")
     }
 
     /// True when the bundled/portable engine executable is present beside the app.

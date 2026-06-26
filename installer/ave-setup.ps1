@@ -136,19 +136,8 @@ function Test-EngineInstalled([string]$InstallDir) {
 }
 
 function Get-DefaultDataDir([array]$Disks) {
-    $preferred = @(
-        "F:\AIVideoStudio\data",
-        "E:\AIVideoStudio\data",
-        "D:\AIVideoStudio\data"
-    )
-    foreach ($p in $preferred) {
-        $root = ($p -split "\\")[0] + "\"
-        $drive = $Disks | Where-Object { $_.Root -eq $root } | Select-Object -First 1
-        if ($drive -and $drive.FreeGb -ge 35) { return $p }
-    }
-    $best = $Disks | Select-Object -First 1
-    if ($best) { return (Join-Path $best.Root "AIVideoStudio\data") }
-    return (Join-Path $env:LOCALAPPDATA "AI Video Tool\data")
+    # Single install tree — everything under F:\ai-video-studio.
+    return "F:\ai-video-studio\data"
 }
 
 function Copy-TreeWithProgress([string]$Src, [string]$Dst, [string]$Label) {

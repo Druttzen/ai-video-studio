@@ -21,11 +21,9 @@ if (-not $env:AVE_PYTHON) {
 }
 $env:AVE_ENGINE_DIR = Join-Path $root "engine"
 
-# Prefer F: / E: for model cache when the standard path exists.
+# All models/outputs live under the project tree (never E: or AppData).
 if (-not $env:AVE_DATA_DIR) {
-    foreach ($p in @("F:\AIVideoStudio\data", "E:\AIVideoStudio\data")) {
-        if (Test-Path $p) { $env:AVE_DATA_DIR = $p; break }
-    }
+    $env:AVE_DATA_DIR = Join-Path $root "data"
 }
 
 Write-Host "Engine python : $env:AVE_PYTHON"

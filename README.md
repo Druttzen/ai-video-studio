@@ -5,7 +5,7 @@ image-to-video, **beat-synced music videos**, and **perfect-looping Spotify
 Canvas** clips — branded **Dj MAD**, auto-adapts to your hardware (NVIDIA CUDA
 when present, CPU fallback otherwise) and downloads models on demand.
 
-**Project root:** `F:\ai-music-studio`
+**Project root:** `F:\ai-video-studio`
 
 ### Features
 
@@ -56,7 +56,8 @@ know about it — the UI is fully data-driven.
 ### Layout
 
 ```
-F:\ai-music-studio\
+F:\ai-video-studio\
+├── data/                       # models, outputs, HF cache (AVE_DATA_DIR)
 ├── engine/                     # Python model engine (FastAPI sidecar)
 │   └── ave_engine/
 │       ├── device.py           # CUDA/CPU detection + VRAM-tiered policy
@@ -102,7 +103,7 @@ F:\ai-music-studio\
 ## Models
 
 All open-source; weights download from Hugging Face on first use and are cached
-under your app-data folder (managed from the **Models** tab).
+under `F:\ai-video-studio\data` (managed from the **Models** tab).
 
 | Model | Task | License | Commercial | ~Size | Min VRAM |
 |---|---|---|---|---|---|
@@ -154,14 +155,14 @@ cd ..
 ### 3. Run
 
 ```powershell
-cd F:\ai-music-studio
-$env:AVE_DATA_DIR = "F:\AIVideoStudio\data"   # optional; E:\ also works
+cd F:\ai-video-studio
 .\scripts\dev.ps1
 ```
 
-`dev.ps1` points the Rust supervisor at the `avestudio` env (override with
-`$env:AVE_PYTHON`) and runs `npm run tauri dev`. The Rust app spawns the engine
-automatically; the **Settings** tab shows detected hardware and the engine paths.
+`dev.ps1` sets `AVE_DATA_DIR` to `F:\ai-video-studio\data`, points the Rust
+supervisor at the `avestudio` env (override with `$env:AVE_PYTHON`), and runs
+`npm run tauri dev`. The Rust app spawns the engine automatically; the
+**Settings** tab shows detected hardware and the engine paths.
 
 > The UI runs even before PyTorch is installed (it reports CPU/“torch not
 > installed”), so you can explore the interface immediately — generation needs torch.
@@ -171,13 +172,13 @@ automatically; the **Settings** tab shows detected hardware and the engine paths
 ## Building & shipping
 
 ```powershell
-cd F:\ai-music-studio
+cd F:\ai-video-studio
 $env:AVE_PYTHON = "$env:USERPROFILE\miniconda3\envs\avestudio\python.exe"
 .\scripts\build.ps1              # full build (~30 min for engine)
 .\scripts\build.ps1 -SkipEngine  # app + install.exe only
 ```
 
-Output: `F:\ai-music-studio\release\` (`install.exe`, `payload\ave-engine\`, portable exe).
+Output: `F:\ai-video-studio\release\` (`install.exe`, `payload\ave-engine\`, portable exe).
 
 ---
 
@@ -205,7 +206,7 @@ work even before any AI model is downloaded.
 | `AVE_PYTHON` | Python interpreter the Rust supervisor launches (dev) |
 | `AVE_ENGINE_DIR` | Path to `engine/` (dev; auto-resolved otherwise) |
 | `AVE_ENGINE_BIN` | Explicit engine executable (overrides everything) |
-| `AVE_DATA_DIR` | Where models + outputs live (set by Rust to the app-data dir) |
+| `AVE_DATA_DIR` | Where models + outputs live (`F:\ai-video-studio\data` by default) |
 | `AVE_PORT` | Force the engine port (default: a free port chosen at startup) |
 | `AVE_WAV2LIP_DIR` | Path to a Wav2Lip checkout to enable lip sync (optional) |
 

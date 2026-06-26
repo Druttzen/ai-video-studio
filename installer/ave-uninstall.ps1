@@ -70,14 +70,7 @@ function Read-InstallState([string]$InstallDir) {
 function Get-DataDirCandidates([string]$InstallDir, $State) {
     $dirs = New-Object System.Collections.Generic.List[string]
     if ($State -and $State.data_dir) { $dirs.Add([string]$State.data_dir) | Out-Null }
-    foreach ($p in @(
-        "F:\AIVideoStudio\data",
-        "E:\AIVideoStudio\data",
-        "D:\AIVideoStudio\data",
-        (Join-Path $env:LOCALAPPDATA "AI Video Tool\data"),
-        (Join-Path $env:LOCALAPPDATA "AIVideoStudio\data"),
-        (Join-Path $env:LOCALAPPDATA "AIVideoStudio")
-    )) {
+    foreach ($p in @("F:\ai-video-studio\data")) {
         if ($p -and (Test-Path $p) -and -not $dirs.Contains($p)) { $dirs.Add($p) | Out-Null }
     }
     return $dirs

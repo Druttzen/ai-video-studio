@@ -7,14 +7,9 @@ import sys
 import time
 from pathlib import Path
 
-_data = None
-for _candidate in (r"F:\AIVideoStudio\data", r"E:\AIVideoStudio\data"):
-    if Path(_candidate).exists():
-        _data = _candidate
-        break
-_data = _data or r"E:\AIVideoStudio\data"
-os.environ.setdefault("AVE_DATA_DIR", _data)
-os.environ.setdefault("HF_HOME", str(Path(_data) / "models"))
+_data = Path(__file__).resolve().parent.parent / "data"
+os.environ.setdefault("AVE_DATA_DIR", str(_data))
+os.environ.setdefault("HF_HOME", str(_data / "models"))
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
