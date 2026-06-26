@@ -21,9 +21,11 @@ if (-not $env:AVE_PYTHON) {
 }
 $env:AVE_ENGINE_DIR = Join-Path $root "engine"
 
-# Prefer E: for model cache if the standard path exists (saves C: space).
-if (-not $env:AVE_DATA_DIR -and (Test-Path "E:\AIVideoStudio\data")) {
-    $env:AVE_DATA_DIR = "E:\AIVideoStudio\data"
+# Prefer F: / E: for model cache when the standard path exists.
+if (-not $env:AVE_DATA_DIR) {
+    foreach ($p in @("F:\AIVideoStudio\data", "E:\AIVideoStudio\data")) {
+        if (Test-Path $p) { $env:AVE_DATA_DIR = $p; break }
+    }
 }
 
 Write-Host "Engine python : $env:AVE_PYTHON"

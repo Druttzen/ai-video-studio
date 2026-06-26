@@ -71,6 +71,7 @@ function Get-DataDirCandidates([string]$InstallDir, $State) {
     $dirs = New-Object System.Collections.Generic.List[string]
     if ($State -and $State.data_dir) { $dirs.Add([string]$State.data_dir) | Out-Null }
     foreach ($p in @(
+        "F:\AIVideoStudio\data",
         "E:\AIVideoStudio\data",
         "D:\AIVideoStudio\data",
         (Join-Path $env:LOCALAPPDATA "AI Video Tool\data"),

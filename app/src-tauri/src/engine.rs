@@ -33,7 +33,41 @@ impl EngineState {
     }
 
     /// Resolve the data dir where the engine stores models + outputs.
+    ///
+    /// Priority:
+    ///   1. `AVE_DATA_DIR` environment variable
+    ///   2. `.ave-install-state.json` beside the executable (written by setup)
+    ///   3. Known locations on F:/E: if they already exist
+    ///   4. Tauri per-user app data dir
     fn data_dir(app: &AppHandle) -> PathBuf {
+        if let Ok(dir) = std::env::var("AVE_DATA_DIR") {
+            if !dir.is_empty() {
+                return PathBuf::from(dir);
+            }
+        }
+
+        if let Ok(exe) = std::env::current_exe() {
+            if let Some(parent) = exe.parent() {
+                let state_path = parent.join(".ave-install-state.json");
+                if let Ok(raw) = std::fs::read_to_string(&state_path) {
+                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(&raw) {
+                        if let Some(s) = json.get("data_dir").and_then(|v| v.as_str()) {
+                            if !s.is_empty() {
+                                return PathBuf::from(s);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        for candidate in ["F:\\AIVideoStudio\\data", "E:\\AIVideoStudio\\data"] {
+            let p = PathBuf::from(candidate);
+            if p.exists() {
+                return p;
+            }
+        }
+
         app.path()
             .app_data_dir()
             .unwrap_or_else(|_| std::env::temp_dir().join("AIVideoStudio"))

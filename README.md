@@ -1,9 +1,11 @@
-# AI Video Studio
+# Dj MAD — AI Video Tool
 
-A local-first, open-source desktop app for **AI video generation** — text-to-video,
+A local-first desktop app for **AI video generation** — text-to-video,
 image-to-video, **beat-synced music videos**, and **perfect-looping Spotify
-Canvas** clips — that auto-adapts to your hardware (NVIDIA CUDA when present, CPU
-fallback otherwise) and downloads models on demand. One window, no cloud.
+Canvas** clips — branded **Dj MAD**, auto-adapts to your hardware (NVIDIA CUDA
+when present, CPU fallback otherwise) and downloads models on demand.
+
+**Project root:** `F:\ai-music-studio`
 
 ### Features
 
@@ -54,7 +56,7 @@ know about it — the UI is fully data-driven.
 ### Layout
 
 ```
-ai-video-studio/
+F:\ai-music-studio\
 ├── engine/                     # Python model engine (FastAPI sidecar)
 │   └── ave_engine/
 │       ├── device.py           # CUDA/CPU detection + VRAM-tiered policy
@@ -152,7 +154,9 @@ cd ..
 ### 3. Run
 
 ```powershell
-./scripts/dev.ps1
+cd F:\ai-music-studio
+$env:AVE_DATA_DIR = "F:\AIVideoStudio\data"   # optional; E:\ also works
+.\scripts\dev.ps1
 ```
 
 `dev.ps1` points the Rust supervisor at the `avestudio` env (override with
@@ -164,21 +168,16 @@ automatically; the **Settings** tab shows detected hardware and the engine paths
 
 ---
 
-## Building the Windows installer (.exe)
+## Building & shipping
 
 ```powershell
+cd F:\ai-music-studio
 $env:AVE_PYTHON = "$env:USERPROFILE\miniconda3\envs\avestudio\python.exe"
-./scripts/build.ps1
+.\scripts\build.ps1              # full build (~30 min for engine)
+.\scripts\build.ps1 -SkipEngine  # app + install.exe only
 ```
 
-This packages the engine with PyInstaller into `app/src-tauri/binaries/ave-engine/`,
-then runs `tauri build` to produce an NSIS installer at
-`app/src-tauri/target/release/bundle/nsis/*.exe`.
-
-The installer stays small because **model weights are not bundled** — they download
-on first use. The shipped CUDA/CPU flavor is whatever `torch` is installed in the
-build environment, so build with the backend you want end users to get (CUDA wheels
-also run on machines without a GPU by falling back to CPU at runtime).
+Output: `F:\ai-music-studio\release\` (`install.exe`, `payload\ave-engine\`, portable exe).
 
 ---
 

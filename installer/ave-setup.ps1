@@ -136,7 +136,11 @@ function Test-EngineInstalled([string]$InstallDir) {
 }
 
 function Get-DefaultDataDir([array]$Disks) {
-    $preferred = @("E:\AIVideoStudio\data", "D:\AIVideoStudio\data")
+    $preferred = @(
+        "F:\AIVideoStudio\data",
+        "E:\AIVideoStudio\data",
+        "D:\AIVideoStudio\data"
+    )
     foreach ($p in $preferred) {
         $root = ($p -split "\\")[0] + "\"
         $drive = $Disks | Where-Object { $_.Root -eq $root } | Select-Object -First 1

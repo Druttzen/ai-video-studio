@@ -7,9 +7,14 @@ import sys
 import time
 from pathlib import Path
 
-# Use E: drive data dir (models downloaded there).
-os.environ.setdefault("AVE_DATA_DIR", r"E:\AIVideoStudio\data")
-os.environ.setdefault("HF_HOME", r"E:\AIVideoStudio\data\models")
+_data = None
+for _candidate in (r"F:\AIVideoStudio\data", r"E:\AIVideoStudio\data"):
+    if Path(_candidate).exists():
+        _data = _candidate
+        break
+_data = _data or r"E:\AIVideoStudio\data"
+os.environ.setdefault("AVE_DATA_DIR", _data)
+os.environ.setdefault("HF_HOME", str(Path(_data) / "models"))
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
