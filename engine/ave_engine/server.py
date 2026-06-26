@@ -105,7 +105,18 @@ def analyze_audio_endpoint(req: AnalyzeAudioRequest) -> dict:
     if not path:
         raise HTTPException(status_code=400, detail="audio_b64 or audio_path required")
     try:
-        return {"path": path, **analyze_audio(path, beats_per_bar=req.beats_per_bar).as_dict()}
+        return {
+            "path": path,
+            **analyze_audio(
+                path,
+                beats_per_bar=req.beats_per_bar,
+                range_start=req.range_start,
+                range_end=req.range_end,
+                min_clip_sec=req.min_clip_sec,
+                max_clip_sec=req.max_clip_sec,
+                max_clips=req.max_clips,
+            ).as_dict(),
+        }
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"audio analysis failed: {exc}")
 

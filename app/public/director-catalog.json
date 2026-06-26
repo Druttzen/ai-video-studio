@@ -1,0 +1,419 @@
+{
+  "version": "1.0.0",
+  "app": "ai-video-tool",
+  "brand": "Director Engine",
+  "sceneTemplates": {
+    "Rain city drive": {
+      "topic": "a car driving through a rainy city at night",
+      "env": "wet asphalt, neon reflections, street lamps",
+      "camera": "low-angle tracking shot",
+      "mood": "dramatic and intense",
+      "length": "8",
+      "fps": "24",
+      "ratio": "21:9"
+    },
+    "Cyberpunk alley": {
+      "topic": "a figure walking through a neon-lit cyberpunk alley",
+      "env": "narrow alleys, steam vents, holographic signs",
+      "camera": "handheld close follow",
+      "mood": "mysterious and electric",
+      "length": "10",
+      "fps": "30",
+      "ratio": "16:9"
+    },
+    "Fog forest road": {
+      "topic": "a vehicle creeping through a foggy forest road",
+      "env": "dense fog, tall pines, soft diffused dawn light",
+      "camera": "slow dolly forward",
+      "mood": "calm but unsettling",
+      "length": "12",
+      "fps": "24",
+      "ratio": "21:9"
+    },
+    "Industrial night": {
+      "topic": "a freight truck crossing an industrial yard at night",
+      "env": "harsh sodium lamps, smoke stacks, wet concrete",
+      "camera": "side tracking shot",
+      "mood": "raw and powerful",
+      "length": "8",
+      "fps": "30",
+      "ratio": "16:9"
+    },
+    "Arena concert": {
+      "topic": "a performer commanding an arena stage during a light show",
+      "env": "crowd silhouettes, haze, laser grids, spotlights",
+      "camera": "orbiting dynamic camera",
+      "mood": "energetic and epic",
+      "length": "10",
+      "fps": "60",
+      "ratio": "16:9"
+    },
+    "Desert highway": {
+      "topic": "a motorcycle cutting across an empty desert highway at golden hour",
+      "env": "heat shimmer, long shadows, vast horizon",
+      "camera": "aerial drone chase",
+      "mood": "freedom and speed",
+      "length": "8",
+      "fps": "24",
+      "ratio": "2.39:1"
+    },
+    "Underwater dream": {
+      "topic": "a diver drifting through bioluminescent kelp",
+      "env": "deep blue water, particle rays, slow currents",
+      "camera": "floating steadicam",
+      "mood": "serene and surreal",
+      "length": "15",
+      "fps": "24",
+      "ratio": "16:9"
+    }
+  },
+  "styleProfiles": [
+    {
+      "name": "cinematic",
+      "label": "Cinematic",
+      "style": "cinematic, ultra detailed, natural lighting, volumetric atmosphere, dynamic camera, shallow depth of field, filmic color grade"
+    },
+    {
+      "name": "documentary",
+      "label": "Documentary",
+      "style": "documentary realism, handheld camera, available light, authentic colors, subtle motion, observational framing"
+    },
+    {
+      "name": "stylized",
+      "label": "Stylized",
+      "style": "stylized, bold colors, high contrast, expressive lighting, artistic composition, graphic clarity"
+    },
+    {
+      "name": "commercial",
+      "label": "Commercial",
+      "style": "premium commercial look, clean highlights, controlled reflections, product-safe framing, polished grade"
+    },
+    {
+      "name": "noir",
+      "label": "Noir",
+      "style": "film noir, low-key lighting, deep shadows, rain-slick surfaces, moody contrast, mystery tone"
+    },
+    {
+      "name": "music-video",
+      "label": "Music video",
+      "style": "music video energy, performance and B-roll, beat-synced cuts, hero lighting on chorus, polished grade"
+    },
+    {
+      "name": "anime",
+      "label": "Anime",
+      "style": "anime style, clean line art, saturated accents, expressive motion, readable silhouettes"
+    },
+    {
+      "name": "hyperreal",
+      "label": "Hyperreal",
+      "style": "hyperreal detail, sharp textures, controlled HDR, premium commercial finish"
+    }
+  ],
+  "randomInspiration": {
+    "topics": [
+      "a courier sprinting through a crowded night market",
+      "a spacecraft docking in a silent orbit",
+      "a chef plating under a single spotlight",
+      "a dancer alone in an empty warehouse",
+      "a storm rolling over a coastal lighthouse",
+      "a child releasing lanterns at dusk"
+    ],
+    "envs": [
+      "rain-soaked city streets",
+      "sunlit alpine meadow",
+      "abandoned factory interior",
+      "subway platform at rush hour",
+      "candlelit study room",
+      "misty mountain pass"
+    ],
+    "cameras": [
+      "slow crane reveal",
+      "tracking shot at eye level",
+      "orbiting macro push-in",
+      "static wide tableau",
+      "handheld documentary follow",
+      "FPV speed run"
+    ],
+    "moods": [
+      "tender and hopeful",
+      "tense and urgent",
+      "melancholic beauty",
+      "playful energy",
+      "epic awe",
+      "quiet intimacy"
+    ],
+    "lengths": [
+      "5",
+      "8",
+      "10",
+      "12",
+      "15",
+      "20"
+    ],
+    "fps": [
+      "24",
+      "30",
+      "60"
+    ],
+    "ratios": [
+      "16:9",
+      "9:16",
+      "1:1",
+      "21:9",
+      "2.39:1"
+    ]
+  },
+  "examplePrompts": [
+    {
+      "text": "Imagine a cyberpunk close-up shot capturing the upper body of a character with an melancholic demeanor. The subject is gesturing with one hand while shaking the head"
+    },
+    {
+      "text": "A sleek red sports car speeds through a winding mountain road"
+    },
+    {
+      "text": "A group of fluffy baby chicks huddle together under a heat lamp in a rustic barn. Their soft peeping fills the air as they nudge each other for warmth. The wooden floor beneath them is strewn with straw"
+    },
+    {
+      "text": "A black-and-white film of a pianist playing in an empty theater. His fingers move deftly across the keys"
+    },
+    {
+      "text": "A wave of glowing steam crashes into a stone wall"
+    },
+    {
+      "text": "A tomato surfing on a piece of lettuce down a waterfall of ranch dressing"
+    },
+    {
+      "text": "A cheerful panda on a bustling city street"
+    },
+    {
+      "text": "A shimmering"
+    },
+    {
+      "text": "A stylish woman walks down a Tokyo street filled with warm glowing neon and animated city signage. She wears a black leather jacket"
+    },
+    {
+      "text": "Several giant wooly mammoths approach treading through a snowy meadow"
+    },
+    {
+      "text": "A movie trailer featuring the adventures of the 30 year old space man wearing a red wool knitted motorcycle helmet"
+    },
+    {
+      "text": "Drone view of waves crashing against the rugged cliffs along Big Sur's garay point beach. The crashing blue waters create white-tipped waves"
+    },
+    {
+      "text": "Animated scene features a close-up of a short fluffy monster kneeling beside a melting red candle. The art style is 3D and realistic"
+    },
+    {
+      "text": "A gorgeously rendered papercraft world of a coral reef"
+    },
+    {
+      "text": "This close-up shot of a Victoria crowned pigeon showcases its striking blue plumage and red chest. Its crest is made of delicate"
+    },
+    {
+      "text": "Photorealistic closeup video of two pirate ships battling each other as they sail inside a cup of coffee."
+    },
+    {
+      "text": "A young man at his 20s is sitting on a piece of cloud in the sky"
+    },
+    {
+      "text": "Historical footage of California during the gold rush."
+    },
+    {
+      "text": "A close up view of a glass sphere that has a zen garden within it. There is a small dwarf in the sphere who is raking the zen garden and creating patterns in the sand."
+    },
+    {
+      "text": "Extreme close up of a 24 year old woman's eye blinking"
+    },
+    {
+      "text": "A cartoon kangaroo disco dances."
+    },
+    {
+      "text": "A beautiful homemade video showing the people of Lagos"
+    },
+    {
+      "text": "A petri dish with a bamboo forest growing within it that has tiny red pandas running around."
+    },
+    {
+      "text": "The camera rotates around a large stack of vintage televisions all showing different programs — 1950s sci-fi movies"
+    }
+  ],
+  "cameraMoves": [
+    "dolly in",
+    "dolly out",
+    "dolly zoom",
+    "pan left",
+    "pan right",
+    "tilt up",
+    "tilt down",
+    "truck left",
+    "truck right",
+    "crane up",
+    "crane down",
+    "boom up",
+    "boom down",
+    "tracking shot",
+    "whip pan",
+    "rack focus",
+    "gimbal orbit",
+    "gimbal follow",
+    "steadycam walk",
+    "FPV chase",
+    "handheld shake",
+    "locked-off camera"
+  ],
+  "lightingTerms": [
+    "rim light",
+    "edge light",
+    "back light",
+    "volumetric fog",
+    "god rays",
+    "light shafts",
+    "bounce light",
+    "soft key light",
+    "hard key light",
+    "practical lights",
+    "neon reflections",
+    "45° key right",
+    "negative fill",
+    "motivated practicals"
+  ],
+  "colorProfiles": [
+    "Kodak 2383",
+    "Kodak Vision3 250D",
+    "Kodak Vision3 500T",
+    "Fuji Eterna",
+    "Fuji Pro 400H",
+    "teal-orange grade",
+    "cinematic LUT",
+    "film emulation"
+  ],
+  "cameraPresets": [
+    "RED Komodo 6K",
+    "RED V-Raptor",
+    "Sony FX3 S-Cinetone",
+    "Sony A7S III",
+    "Blackmagic Pocket 6K",
+    "Blackmagic URSA 12K",
+    "ARRI Alexa Mini",
+    "ARRI Alexa Mini LF"
+  ],
+  "lensKits": [
+    "24/35/50mm prime set",
+    "14/24/35mm wide prime set",
+    "70-200mm zoom lens",
+    "24-70mm zoom lens",
+    "1.8 anamorphic set",
+    "2x anamorphic set"
+  ],
+  "filmFormats": [
+    "Super 16",
+    "Super 35",
+    "35mm film",
+    "65mm film",
+    "70mm film",
+    "IMAX 70mm",
+    "IMAX digital"
+  ],
+  "shotTypes": {
+    "Extreme wide shot": "extreme wide shot, environment-focused, small subject, establishing scale.",
+    "Wide shot": "wide shot, full body, environment visible, balanced framing.",
+    "Medium shot": "medium shot, waist-up, focus on subject, natural perspective.",
+    "Close-up": "close-up, strong focus on face or detail, shallow depth of field.",
+    "Extreme close-up": "extreme close-up, tiny detail, intense focus.",
+    "POV": "POV shot, immersive perspective, handheld motion.",
+    "Over-the-shoulder": "over-the-shoulder shot, subject framed from behind another person."
+  },
+  "lightingSetups": {
+    "3-point lighting": "soft key light 45°, gentle fill, subtle rim light, natural contrast.",
+    "High-contrast noir": "hard key light, deep shadows, minimal fill, strong rim light.",
+    "Soft cinematic": "large soft key, soft fill, subtle back light, low contrast.",
+    "Neon reflections": "neon practicals, reflections on wet surfaces, rim light, volumetric fog.",
+    "Stage/Arena": "strong spotlights, backlights, haze, moving beams, high contrast."
+  },
+  "colorPipelines": {
+    "Kodak 2383": "Kodak 2383 film emulation, soft halation, fine grain, warm highlights, cool shadows.",
+    "Fuji Eterna": "Fuji Eterna profile, low contrast, natural skin tones, soft colors.",
+    "Teal-Orange": "teal-orange grade, strong color separation, cinematic contrast.",
+    "Log + LUT": "log gamma capture, film LUT, gentle contrast curve."
+  },
+  "cameraRig": {
+    "cameras": [
+      "RED Komodo 6K",
+      "Sony FX3",
+      "Blackmagic Pocket 6K",
+      "ARRI Alexa Mini"
+    ],
+    "lenses": [
+      "35mm prime",
+      "50mm prime",
+      "24-70mm zoom",
+      "70-200mm zoom",
+      "1.8 anamorphic"
+    ],
+    "moves": [
+      "dolly in",
+      "gimbal orbit",
+      "crane up",
+      "FPV chase"
+    ]
+  },
+  "aspectRatios": [
+    "16:9",
+    "9:16",
+    "1:1",
+    "4:3",
+    "2.39:1",
+    "21:9",
+    "5:8",
+    "3:2",
+    "1.85:1",
+    "2:1"
+  ],
+  "qualityPresets": {
+    "DRAFT": {
+      "label": "Draft",
+      "numSteps": 20,
+      "numFrames": 65,
+      "cfg": 6.5,
+      "motion": 3
+    },
+    "STANDARD": {
+      "label": "Standard",
+      "numSteps": 40,
+      "numFrames": 129,
+      "cfg": 7.5,
+      "motion": 4
+    },
+    "PREMIUM": {
+      "label": "Premium",
+      "numSteps": 50,
+      "numFrames": 129,
+      "cfg": 8.5,
+      "motion": 5
+    }
+  },
+  "renderBackends": [
+    {
+      "id": "export",
+      "label": "Export only",
+      "description": "Download job JSON — paste the prompt into Sora, Runway, or Kling. Does not create MP4."
+    },
+    {
+      "id": "local-python",
+      "label": "Local GPU render",
+      "description": "Render MP4 on your GPU — Wan 2.1 (Diffusers) by default, or Open-Sora in Director → Advanced"
+    }
+  ],
+  "localRenderEngines": [
+    {
+      "id": "diffusers-wan",
+      "label": "Wan 2.1 (Diffusers)",
+      "description": "Native CUDA on Windows — no WSL or Open-Sora folder required"
+    },
+    {
+      "id": "open-sora",
+      "label": "Open-Sora 2.0",
+      "description": "ColossalAI pipeline — needs clone + WSL on Windows"
+    }
+  ]
+}

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { AudioAnalysis, JobStatus, ModelStatus, api } from "../api";
+import InspireBar from "./InspireBar";
 import { JobPanel, fileToDataUrl } from "./shared";
 
 interface Props {
@@ -23,6 +24,7 @@ export default function MusicVideo({ models, jobs, onError }: Props) {
   const [nScenes, setNScenes] = useState(4);
   const [beatsPerCut, setBeatsPerCut] = useState(4);
   const [lengthSync, setLengthSync] = useState(true);
+  const [useClipPlan, setUseClipPlan] = useState(true);
   const [lipSync, setLipSync] = useState(false);
   const [face, setFace] = useState<string | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
@@ -44,7 +46,12 @@ export default function MusicVideo({ models, jobs, onError }: Props) {
     setAnalysis(null);
     setAnalyzing(true);
     try {
-      setAnalysis(await api.analyzeAudio(url));
+      const result = await api.analyzeAudio(url);
+      setAnalysis(result);
+      if (result.clip_count && result.clip_count > 0) {
+        setNScenes(Math.min(12, Math.max(2, Math.ceil(result.clip_count / 2))));
+      }
+      if (result.vocals_likely) setLipSync(true);
     } catch (e) {
       onError(e);
     } finally {
@@ -78,6 +85,7 @@ export default function MusicVideo({ models, jobs, onError }: Props) {
         beats_per_cut: beatsPerCut,
         length_sync: lengthSync,
         lip_sync: lipSync,
+        use_clip_plan: useClipPlan,
       });
       setJobId(job_id);
     } catch (e) {
@@ -92,7 +100,7 @@ export default function MusicVideo({ models, jobs, onError }: Props) {
       <h1>Music Video</h1>
       <p className="subtitle">
         Drop in a track, describe the visuals, and get a beat-synced video cut to
-        the music — text-to-video or animate a single picture.
+        the music — smart clip plan segments when enabled.
       </p>
 
       {ready.length === 0 ? (
@@ -100,7 +108,9 @@ export default function MusicVideo({ models, jobs, onError }: Props) {
           Download a model in the <b>Models</b> tab first.
         </div>
       ) : (
-        <div className="generate-layout">
+        <>
+          <InspireBar mode="music-video" onBrief={setBrief} />
+          <div className="generate-layout">
           <div className="card">
             <div className="field">
               <label>Music file</label>
@@ -119,6 +129,12 @@ export default function MusicVideo({ models, jobs, onError }: Props) {
                   <span className="badge good">{analysis.tempo.toFixed(0)} BPM</span>
                   <span className="badge">{analysis.duration.toFixed(1)}s</span>
                   <span className="badge">{analysis.num_beats} beats</span>
+                  {analysis.clip_count != null && analysis.clip_count > 0 && (
+                    <span className="badge good">{analysis.clip_count} clip segments</span>
+                  )}
+                  {analysis.vocals_likely && (
+                    <span className="badge warn">vocals likely</span>
+                  )}
                   <span className="badge">{analysis.sections.length} sections</span>
                 </div>
               )}
@@ -182,8 +198,28 @@ export default function MusicVideo({ models, jobs, onError }: Props) {
               <Num label="Scenes" v={nScenes} on={setNScenes} />
               <Num label="Beats / cut" v={beatsPerCut} on={setBeatsPerCut} />
               <div className="field">
+                <label>Smart clip plan</label>
+                <button
+                  type="button"
+                  className={useClipPlan ? "primary" : "ghost"}
+                  onClick={() => setUseClipPlan(!useClipPlan)}
+                  style={{ width: "100%" }}
+                  title="Variable-length segments aligned to beats (4–8s)"
+                >
+                  {useClipPlan ? "On" : "Off"}
+                </button>
+              </div>
+            </div>
+
+            <div className="row3">
+              <div className="field">
                 <label>Length sync</label>
-                <button className={lengthSync ? "primary" : "ghost"} onClick={() => setLengthSync(!lengthSync)} style={{ width: "100%" }}>
+                <button
+                  type="button"
+                  className={lengthSync ? "primary" : "ghost"}
+                  onClick={() => setLengthSync(!lengthSync)}
+                  style={{ width: "100%" }}
+                >
                   {lengthSync ? "Match track" : "Off"}
                 </button>
               </div>
@@ -191,7 +227,12 @@ export default function MusicVideo({ models, jobs, onError }: Props) {
 
             <div className="field">
               <label>Lip sync (optional, needs Wav2Lip setup)</label>
-              <button className={lipSync ? "primary" : "ghost"} onClick={() => setLipSync(!lipSync)} style={{ width: "100%" }}>
+              <button
+                type="button"
+                className={lipSync ? "primary" : "ghost"}
+                onClick={() => setLipSync(!lipSync)}
+                style={{ width: "100%" }}
+              >
                 {lipSync ? "Enabled" : "Disabled"}
               </button>
             </div>
@@ -228,6 +269,7 @@ export default function MusicVideo({ models, jobs, onError }: Props) {
             onCancel={busy ? () => job && api.cancelJob(job.job_id) : undefined}
           />
         </div>
+        </>
       )}
     </>
   );

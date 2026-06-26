@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, GenerationRequest, Health, JobStatus, ModelStatus } from "../api";
+import InspireBar from "./InspireBar";
 import { JobPanel } from "./shared";
 
 interface Props {
@@ -147,7 +148,18 @@ export default function Generate({ models, jobs, health, onError }: Props) {
           No models downloaded yet. Head to the <b>Models</b> tab (LTX-Video recommended).
         </div>
       ) : (
-        <div className="generate-layout">
+        <>
+          <InspireBar
+            mode="generate"
+            onPrompt={(prompt, negative) =>
+              setReq((r) => ({
+                ...r,
+                prompt,
+                negative_prompt: negative ?? r.negative_prompt,
+              }))
+            }
+          />
+          <div className="generate-layout">
           <div className="card">
             <div className="field">
               <label>Quality preset</label>
@@ -272,6 +284,7 @@ export default function Generate({ models, jobs, health, onError }: Props) {
             onCancel={busy ? cancel : undefined}
           />
         </div>
+        </>
       )}
       {health && !health.device.torch_available && (
         <p className="subtitle warn-text" style={{ marginTop: 16 }}>

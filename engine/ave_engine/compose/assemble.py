@@ -6,7 +6,7 @@ from pathlib import Path
 
 from ..analysis.audio import AudioAnalysis
 from . import ffmpeg_ops as ff
-from .timeline import Segment, build_segments
+from .timeline import Segment, build_segments, build_segments_from_clip_plan
 
 
 def assemble_music_video(
@@ -18,20 +18,19 @@ def assemble_music_video(
     height: int,
     beats_per_cut: int = 4,
     length_sync: bool = True,
+    use_clip_plan: bool = True,
     on_progress=None,
 ) -> Path:
-    """Cut scene clips on beats and mux the original track.
-
-    * beat sync   -> cuts land on every `beats_per_cut`-th beat
-    * length sync -> the rendered timeline equals the audio duration
-    """
+    """Cut scene clips on beats (or clip plan) and mux the original track."""
     work = out_path.parent / f"_work_{out_path.stem}"
     work.mkdir(parents=True, exist_ok=True)
 
-    segments: list[Segment] = build_segments(audio, len(scene_clips), beats_per_cut)
-    if not length_sync:
-        # Cap to the natural sum of one pass through the clips instead.
-        segments = segments[: max(1, len(scene_clips) * 2)]
+    if use_clip_plan and audio.clip_plan:
+        segments = build_segments_from_clip_plan(audio, len(scene_clips), length_sync)
+    else:
+        segments = build_segments(audio, len(scene_clips), beats_per_cut)
+        if not length_sync:
+            segments = segments[: max(1, len(scene_clips) * 2)]
 
     seg_files: list[Path] = []
     for i, seg in enumerate(segments):

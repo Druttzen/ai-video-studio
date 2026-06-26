@@ -80,6 +80,13 @@ export interface JobStatus {
   request: Record<string, unknown> | null;
 }
 
+export interface ClipPlanEntry {
+  start: number;
+  end: number;
+  duration: number;
+  label: string;
+}
+
 export interface AudioAnalysis {
   path: string;
   duration: number;
@@ -90,6 +97,13 @@ export interface AudioAnalysis {
   energy: number[];
   beats_per_bar: number;
   num_beats: number;
+  onsets?: number[];
+  vocals_likely?: boolean;
+  clip_plan?: ClipPlanEntry[];
+  clip_count?: number;
+  clip_duration_sec?: number;
+  range_start?: number;
+  range_end?: number;
 }
 
 export interface MusicVideoRequest {
@@ -110,6 +124,9 @@ export interface MusicVideoRequest {
   beats_per_cut: number;
   length_sync: boolean;
   lip_sync: boolean;
+  use_clip_plan?: boolean;
+  min_clip_sec?: number;
+  max_clip_sec?: number;
 }
 
 export interface CanvasRequest {
@@ -146,8 +163,14 @@ export const api = {
     invoke<ModelStatus>("delete_model", { modelId: model_id }),
   generate: (request: GenerationRequest) =>
     invoke<{ job_id: string }>("generate", { request }),
-  analyzeAudio: (audio_b64: string) =>
-    invoke<AudioAnalysis>("analyze_audio", { request: { audio_b64 } }),
+  analyzeAudio: (audio_b64: string, opts?: { min_clip_sec?: number; max_clip_sec?: number }) =>
+    invoke<AudioAnalysis>("analyze_audio", {
+      request: {
+        audio_b64,
+        min_clip_sec: opts?.min_clip_sec ?? 4,
+        max_clip_sec: opts?.max_clip_sec ?? 8,
+      },
+    }),
   createMusicVideo: (request: MusicVideoRequest) =>
     invoke<{ job_id: string }>("create_music_video", { request }),
   createCanvas: (request: CanvasRequest) =>

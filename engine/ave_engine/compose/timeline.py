@@ -64,3 +64,42 @@ def build_segments(
             Segment(start=pruned[i], end=pruned[i + 1], scene_index=i % max(1, n_scenes))
         )
     return segments
+
+
+def build_segments_from_clip_plan(
+    audio: AudioAnalysis,
+    n_scenes: int,
+    length_sync: bool = True,
+) -> list[Segment]:
+    """Map clip-plan entries to segments, cycling scene clips."""
+    if not audio.clip_plan:
+        return build_segments(audio, n_scenes, beats_per_cut=4)
+
+    segments: list[Segment] = []
+    for i, clip in enumerate(audio.clip_plan):
+        segments.append(
+            Segment(
+                start=clip.start,
+                end=clip.end,
+                scene_index=i % max(1, n_scenes),
+            )
+        )
+
+    if length_sync and audio.duration > 0:
+        last = segments[-1]
+        if last.end < audio.duration - 0.05:
+            segments.append(
+                Segment(
+                    start=last.end,
+                    end=audio.duration,
+                    scene_index=(len(segments)) % max(1, n_scenes),
+                )
+            )
+        elif segments:
+            segments[-1] = Segment(
+                start=segments[-1].start,
+                end=audio.duration,
+                scene_index=segments[-1].scene_index,
+            )
+
+    return segments

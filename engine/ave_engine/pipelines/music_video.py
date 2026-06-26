@@ -35,15 +35,34 @@ def run_music_video(payload: dict, ctx: JobContext) -> str:
     width = int(payload.get("width", 768))
     height = int(payload.get("height", 512))
     fps = int(payload.get("fps", 24))
-    n_scenes = int(payload.get("n_scenes", 4))
     beats_per_cut = int(payload.get("beats_per_cut", 4))
     length_sync = bool(payload.get("length_sync", True))
+    use_clip_plan = bool(payload.get("use_clip_plan", True))
     task = payload.get("task", "text-to-video")
 
     # 1. analyze music
     ctx.progress(0.01, "analyzing music")
-    audio = analyze_audio(str(audio_path), beats_per_bar=payload.get("beats_per_bar", 4))
-    ctx.job.message = f"tempo {audio.tempo:.0f} BPM, {len(audio.beats)} beats"
+    audio = analyze_audio(
+        str(audio_path),
+        beats_per_bar=int(payload.get("beats_per_bar", 4)),
+        range_start=float(payload.get("range_start", 0.0)),
+        range_end=float(payload.get("range_end", -1.0)),
+        min_clip_sec=float(payload.get("min_clip_sec", 4.0)),
+        max_clip_sec=float(payload.get("max_clip_sec", 8.0)),
+        max_clips=int(payload.get("max_clips", 0)),
+    )
+    clip_info = f", {audio.clip_count} clip segments" if audio.clip_plan else ""
+    ctx.job.message = f"tempo {audio.tempo:.0f} BPM, {len(audio.beats)} beats{clip_info}"
+    if audio.vocals_likely and not payload.get("lip_sync"):
+        ctx.job.message += " (vocals detected)"
+
+    # Derive scene count from clip plan when not explicitly overridden.
+    if payload.get("use_clip_plan", True) and audio.clip_plan:
+        cap = int(payload.get("n_scenes", 0)) or 0
+        suggested = min(12, max(2, audio.clip_count))
+        n_scenes = cap if cap > 0 else suggested
+    else:
+        n_scenes = int(payload.get("n_scenes", 4))
 
     # 2. analyze image (optional) + build prompts
     image_analysis = None
@@ -92,6 +111,7 @@ def run_music_video(payload: dict, ctx: JobContext) -> str:
         height=height,
         beats_per_cut=beats_per_cut,
         length_sync=length_sync,
+        use_clip_plan=use_clip_plan,
         on_progress=lambda f: ctx.progress(0.78 + 0.17 * f, "cutting to the beat"),
     )
 

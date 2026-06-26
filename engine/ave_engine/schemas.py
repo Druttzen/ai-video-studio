@@ -51,6 +51,11 @@ class AnalyzeAudioRequest(BaseModel):
     audio_b64: Optional[str] = None
     audio_path: Optional[str] = None
     beats_per_bar: int = 4
+    range_start: float = 0.0
+    range_end: float = -1.0
+    min_clip_sec: float = 4.0
+    max_clip_sec: float = 8.0
+    max_clips: int = 0
 
 
 class AnalyzeImageRequest(BaseModel):
@@ -83,6 +88,12 @@ class MusicVideoRequest(BaseModel):
     beats_per_bar: int = 4
     length_sync: bool = True
     lip_sync: bool = False
+    use_clip_plan: bool = True
+    range_start: float = 0.0
+    range_end: float = -1.0
+    min_clip_sec: float = 4.0
+    max_clip_sec: float = 8.0
+    max_clips: int = 0
 
 
 class CanvasRequest(BaseModel):
