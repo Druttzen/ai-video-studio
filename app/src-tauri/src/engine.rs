@@ -39,6 +39,69 @@ impl EngineState {
             .unwrap_or_else(|_| std::env::temp_dir().join("AIVideoStudio"))
     }
 
+    /// True when the bundled/portable engine executable is present beside the app.
+    pub fn sidecar_installed(app: &AppHandle) -> bool {
+        let sidecar_name = if cfg!(windows) { "ave-engine.exe" } else { "ave-engine" };
+        let mut candidates: Vec<PathBuf> = Vec::new();
+        if let Ok(res_dir) = app.path().resource_dir() {
+            candidates.push(res_dir.join("binaries").join("ave-engine").join(sidecar_name));
+        }
+        if let Ok(app_exe) = std::env::current_exe() {
+            if let Some(parent) = app_exe.parent() {
+                candidates.push(parent.join("ave-engine").join(sidecar_name));
+            }
+        }
+        candidates.iter().any(|p| p.exists())
+    }
+
+    /// Launch the component setup script (Windows only).
+    pub fn run_component_setup(app: &AppHandle) -> Result<(), String> {
+        #[cfg(not(windows))]
+        return Err("component setup is only supported on Windows".into());
+
+        #[cfg(windows)]
+        {
+            let install_dir = app
+                .path()
+                .executable_dir()
+                .map_err(|e| e.to_string())?;
+            let mut setup = None;
+            if let Ok(res) = app.path().resource_dir() {
+                let p = res.join("installer").join("ave-setup.cmd");
+                if p.exists() {
+                    setup = Some(p);
+                }
+            }
+            if setup.is_none() {
+                if let Ok(exe) = std::env::current_exe() {
+                    if let Some(parent) = exe.parent() {
+                        for name in ["setup.cmd", "ave-setup.cmd"] {
+                            let p = parent.join(name);
+                            if p.exists() {
+                                setup = Some(p);
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            let script = setup.ok_or("setup script not found — run install.exe or setup.cmd")?;
+            std::process::Command::new("cmd.exe")
+                .args([
+                    "/c",
+                    "start",
+                    "AI Video Tool Setup",
+                    "/wait",
+                    &script.to_string_lossy(),
+                    "--inst-dir",
+                    &install_dir.to_string_lossy(),
+                ])
+                .spawn()
+                .map_err(|e| e.to_string())?;
+            Ok(())
+        }
+    }
+
     /// Build the command used to launch the engine.
     ///
     /// Priority:
@@ -55,20 +118,24 @@ impl EngineState {
             return c;
         }
 
-        // 2. bundled sidecar produced by PyInstaller and shipped as a resource.
-        // PyInstaller one-folder builds put the exe inside an `ave-engine/`
-        // subfolder; also accept a flat layout.
+        // 2. bundled sidecar (resources) or portable folder next to the app exe.
+        let sidecar_name = if cfg!(windows) { "ave-engine.exe" } else { "ave-engine" };
+        let mut sidecar_candidates: Vec<PathBuf> = Vec::new();
         if let Ok(res_dir) = app.path().resource_dir() {
-            let exe = if cfg!(windows) { "ave-engine.exe" } else { "ave-engine" };
-            for candidate in [
-                res_dir.join("binaries").join("ave-engine").join(exe),
-                res_dir.join("binaries").join(exe),
-            ] {
-                if candidate.exists() {
-                    let mut c = Command::new(candidate);
-                    c.env("AVE_DATA_DIR", &data_dir);
-                    return c;
-                }
+            sidecar_candidates.push(res_dir.join("binaries").join("ave-engine").join(sidecar_name));
+            sidecar_candidates.push(res_dir.join("binaries").join(sidecar_name));
+        }
+        if let Ok(app_exe) = std::env::current_exe() {
+            if let Some(parent) = app_exe.parent() {
+                sidecar_candidates.push(parent.join("ave-engine").join(sidecar_name));
+                sidecar_candidates.push(parent.join("binaries").join("ave-engine").join(sidecar_name));
+            }
+        }
+        for candidate in sidecar_candidates {
+            if candidate.exists() {
+                let mut c = Command::new(candidate);
+                c.env("AVE_DATA_DIR", &data_dir);
+                return c;
             }
         }
 

@@ -1,0 +1,69 @@
+{
+  "version": 1,
+  "product": "AI Video Tool",
+  "components": [
+    {
+      "id": "engine",
+      "name": "AI Engine (PyTorch + pipelines)",
+      "folder": "ave-engine",
+      "executable": "ave-engine.exe",
+      "required": true,
+      "approx_size_gb": 5.0,
+      "description": "Local inference runtime. Required for generation."
+    },
+    {
+      "id": "webview2",
+      "name": "Microsoft WebView2 Runtime",
+      "required": true,
+      "check": "registry:HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\EdgeUpdate\\Clients\\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}\\pv",
+      "description": "UI shell (preinstalled on most Windows 10/11 systems)."
+    },
+    {
+      "id": "data_dir",
+      "name": "Model & output data folder",
+      "required": true,
+      "min_free_gb": 35,
+      "description": "Hugging Face model cache and rendered videos."
+    }
+  ],
+  "models": [
+    {
+      "id": "ltx-video",
+      "name": "LTX-Video",
+      "default": true,
+      "approx_size_gb": 28,
+      "min_vram_gb": 8,
+      "min_free_gb": 35,
+      "description": "Fast text/image-to-video. Recommended default."
+    },
+    {
+      "id": "cogvideox-2b",
+      "name": "CogVideoX-2B",
+      "default": false,
+      "approx_size_gb": 12,
+      "min_vram_gb": 8,
+      "min_free_gb": 15,
+      "description": "High-quality text-to-video (Apache-2.0)."
+    },
+    {
+      "id": "svd-xt",
+      "name": "Stable Video Diffusion XT",
+      "default": false,
+      "approx_size_gb": 9.5,
+      "min_vram_gb": 10,
+      "min_free_gb": 12,
+      "commercial": false,
+      "description": "Image-to-video. Non-commercial license."
+    }
+  ],
+  "optional_addons": [
+    {
+      "id": "wav2lip",
+      "name": "Wav2Lip lip-sync (optional)",
+      "folder": "addons\\wav2lip",
+      "required": false,
+      "approx_size_gb": 0.5,
+      "description": "Enable lip-sync in music videos. Manual clone or future auto-download."
+    }
+  ]
+}

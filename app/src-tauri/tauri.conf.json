@@ -1,8 +1,9 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "AI Video Studio",
+  "productName": "AI Video Tool",
+  "mainBinaryName": "ai-video-tool",
   "version": "0.1.0",
-  "identifier": "com.aivideostudio.app",
+  "identifier": "com.aivideotool.app",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -12,7 +13,7 @@
   "app": {
     "windows": [
       {
-        "title": "AI Video Studio",
+        "title": "Dj MAD — AI Video Tool",
         "width": 1280,
         "height": 860,
         "minWidth": 960,
@@ -30,13 +31,26 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
-    "resources": ["binaries"],
+    "resources": [
+      "resources/installer/ave-setup.cmd",
+      "resources/installer/ave-setup.ps1",
+      "resources/installer/ave-uninstall.cmd",
+      "resources/installer/ave-uninstall.ps1",
+      "resources/installer/manifest.json"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "windows": {
+      "nsis": {
+        "installerHooks": "./windows/hooks.nsh",
+        "installMode": "both",
+        "displayLanguageSelector": false
+      }
+    }
   }
 }

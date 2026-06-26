@@ -10,8 +10,11 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(EngineState::new())
         .setup(|app| {
-            // Spawn the Python engine sidecar as soon as the app starts.
             let handle = app.handle().clone();
+            // First launch without engine: open the component setup CMD wizard.
+            if !EngineState::sidecar_installed(&handle) {
+                let _ = EngineState::run_component_setup(&handle);
+            }
             let state = app.state::<EngineState>();
             state.start(&handle);
             Ok(())

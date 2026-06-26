@@ -9,10 +9,32 @@ from __future__ import annotations
 
 import shutil
 import threading
+import time
 from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Callable, Optional
 
 from ..config import get_settings
 from . import registry
+
+ProgressCb = Callable[[float, int, int, str], None]
+
+# Diffusers pipeline components only (skip monorepo checkpoint variants).
+DOWNLOAD_PATTERNS = [
+    "model_index.json",
+    "scheduler/*",
+    "text_encoder/*",
+    "tokenizer/*",
+    "transformer/*",
+    "vae/*",
+    "unet/*",
+]
+
+
+def _dir_size(path: Path) -> int:
+    if not path.exists():
+        return 0
+    return sum(p.stat().st_size for p in path.rglob("*") if p.is_file())
 
 
 @dataclass
@@ -82,6 +104,76 @@ class ModelManager:
     def status_all(self) -> list[dict]:
         return [self.status(m.id) for m in registry.all_models()]
 
+    def estimate_download_bytes(self, model_id: str) -> int:
+        spec = registry.get_spec(model_id)
+        try:
+            from huggingface_hub import snapshot_download
+
+            files = snapshot_download(
+                repo_id=spec.repo_id,
+                cache_dir=str(get_settings().models_dir),
+                allow_patterns=DOWNLOAD_PATTERNS,
+                dry_run=True,
+            )
+            total = sum(int(getattr(f, "size", 0) or 0) for f in files)
+            if total > 0:
+                return total
+        except Exception:  # noqa: BLE001 - fall back to catalog estimate
+            pass
+        return int(spec.approx_size_gb * (1024**3))
+
+    def download_sync(
+        self,
+        model_id: str,
+        on_progress: Optional[ProgressCb] = None,
+    ) -> None:
+        """Blocking download used by the setup wizard CLI."""
+        spec = registry.get_spec(model_id)
+        if self.is_downloaded(model_id):
+            total = int(self.disk_size_gb(model_id) * (1024**3)) or 1
+            if on_progress:
+                on_progress(1.0, total, total, "already installed")
+            return
+
+        total = self.estimate_download_bytes(model_id)
+        if on_progress:
+            on_progress(0.0, 0, total, "starting download")
+
+        err: list[BaseException | None] = [None]
+
+        def _run() -> None:
+            try:
+                from huggingface_hub import snapshot_download
+
+                snapshot_download(
+                    repo_id=spec.repo_id,
+                    cache_dir=str(get_settings().models_dir),
+                    allow_patterns=DOWNLOAD_PATTERNS,
+                    max_workers=4,
+                )
+            except BaseException as exc:  # noqa: BLE001
+                err[0] = exc
+
+        repo_dir = self._repo_cache_dir(spec.repo_id)
+        t = threading.Thread(target=_run, name=f"dl-sync-{model_id}", daemon=False)
+        t.start()
+        while t.is_alive():
+            done = _dir_size(repo_dir)
+            pct = min(0.99, done / total) if total > 0 else 0.0
+            if on_progress:
+                on_progress(pct, done, total, "downloading weights")
+            time.sleep(0.35)
+        t.join()
+        if err[0] is not None:
+            raise err[0]
+
+        if not self.is_downloaded(model_id):
+            raise RuntimeError(f"download finished but '{model_id}' cache looks incomplete")
+
+        if on_progress:
+            final = _dir_size(repo_dir) or total
+            on_progress(1.0, final, max(final, total), "done")
+
     # ---- download / delete ---------------------------------------------------
     def start_download(self, model_id: str) -> dict:
         spec = registry.get_spec(model_id)
@@ -94,25 +186,11 @@ class ModelManager:
 
         def _run() -> None:
             try:
-                from huggingface_hub import snapshot_download
+                def _cb(pct: float, done: int, total: int, message: str) -> None:
+                    state.progress = pct
+                    state.message = message
 
-                state.message = "downloading weights"
-                # Only fetch diffusers pipeline components (~28 GB), not every
-                # variant checkpoint in the monorepo (which can exceed 100 GB).
-                patterns = [
-                    "model_index.json",
-                    "scheduler/*",
-                    "text_encoder/*",
-                    "tokenizer/*",
-                    "transformer/*",
-                    "vae/*",
-                ]
-                snapshot_download(
-                    repo_id=spec.repo_id,
-                    cache_dir=str(get_settings().models_dir),
-                    allow_patterns=patterns,
-                    max_workers=4,
-                )
+                self.download_sync(model_id, on_progress=_cb)
                 state.progress = 1.0
                 state.status = "ready"
                 state.message = "done"

@@ -25,6 +25,11 @@ build/
 *.ckpt
 *.bin
 
-# OS
+# Build output
+/release/
+engine/dist/
+engine/build/
+app/src-tauri/binaries/ave-engine/
+app/src-tauri/resources/installer/
 .DS_Store
 Thumbs.db

@@ -83,7 +83,9 @@ export default function App() {
     <div className="app">
       <aside className="sidebar">
         <div className="brand">
-          <span className="dot" /> AI Video Studio
+          <img src="/djmad-logo.png" alt="Dj MAD" className="brand-logo" />
+          <span className="brand-sub">AI Video Tool</span>
+          <span className="brand-mark">☣</span>
         </div>
         <nav className="nav">
           {(
@@ -143,8 +145,9 @@ export default function App() {
 
       <main className="main">
         {booting ? (
-          <div className="empty">
-            Starting the model engine… (first launch may take a moment)
+          <div className="boot-screen">
+            <img src="/djmad-logo.png" alt="" aria-hidden />
+            <p>Starting engine…</p>
           </div>
         ) : tab === "generate" ? (
           <Generate models={models} jobs={jobs} health={health} onError={showError} />

@@ -1,7 +1,10 @@
 """Entry point: ``python -m ave_engine``.
 
-Picks a free port (unless AVE_PORT is set), prints a sentinel line that the
-Rust supervisor parses, then serves the FastAPI app.
+Subcommands (for setup wizard / automation):
+  models-status  JSON catalog on stdout
+  download ID    sync model download with AVE_DL_PROGRESS lines
+
+Default (no subcommand): pick a free port, print AVE_ENGINE_PORT sentinel, serve API.
 """
 
 from __future__ import annotations
@@ -12,6 +15,7 @@ import sys
 
 import uvicorn
 
+from .cli import dispatch
 from .config import get_settings
 
 
@@ -21,15 +25,15 @@ def _free_port() -> int:
         return s.getsockname()[1]
 
 
-def main() -> None:
+def _serve() -> None:
     settings = get_settings()
     port = settings.port or _free_port()
 
-    # Sentinel consumed by the Rust supervisor (src-tauri/src/sidecar.rs).
+    # Sentinel consumed by the Rust supervisor (src-tauri/src/engine.rs).
     print(f"AVE_ENGINE_PORT={port}", flush=True)
     sys.stdout.flush()
 
-    log_level = os.environ.get("AVE_LOG_LEVEL", "info")
+    log_level = os.environ.get("AVE_LOG_LEVEL", "warning")
     uvicorn.run(
         "ave_engine.server:app",
         host=settings.host,
@@ -37,6 +41,14 @@ def main() -> None:
         log_level=log_level,
         access_log=False,
     )
+
+
+def main() -> None:
+    code = dispatch(sys.argv[1:])
+    if code == -1:
+        _serve()
+        return
+    raise SystemExit(code)
 
 
 if __name__ == "__main__":
