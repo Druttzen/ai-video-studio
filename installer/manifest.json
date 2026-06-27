@@ -4,7 +4,7 @@
   "release": {
     "github_repo": "Druttzen/ai-video-studio",
     "engine_tag": "v0.2.1",
-    "tag": "v0.2.3",
+    "tag": "v0.2.4",
     "downloads": {
       "engine_win64": {
         "filename": "ave-engine-win64.7z",
