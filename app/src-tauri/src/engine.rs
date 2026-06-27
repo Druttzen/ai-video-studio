@@ -37,7 +37,7 @@ impl EngineState {
     /// Priority:
     ///   1. `AVE_DATA_DIR` environment variable
     ///   2. `.ave-install-state.json` beside the executable (written by setup)
-    ///   3. `F:\ai-video-studio\data` (single project data tree)
+    ///   3. `%LOCALAPPDATA%\\AI Video Tool\\data` (per-user default)
     fn data_dir(_app: &AppHandle) -> PathBuf {
         if let Ok(dir) = std::env::var("AVE_DATA_DIR") {
             if !dir.is_empty() {
@@ -60,7 +60,13 @@ impl EngineState {
             }
         }
 
-        PathBuf::from(r"F:\ai-video-studio\data")
+        if let Ok(local) = std::env::var("LOCALAPPDATA") {
+            if !local.is_empty() {
+                return PathBuf::from(local).join("AI Video Tool").join("data");
+            }
+        }
+
+        PathBuf::from(".").join("data")
     }
 
     /// True when the bundled/portable engine executable is present beside the app.

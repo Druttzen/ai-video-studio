@@ -13,14 +13,11 @@ from functools import lru_cache
 from pathlib import Path
 
 
-def _repo_root() -> Path:
-    """Project root (``F:\\ai-video-studio`` when deployed on this machine)."""
-    return Path(__file__).resolve().parent.parent.parent
-
-
 def _default_data_dir() -> Path:
-    # Single tree: models, outputs, and cache live under ``{repo}/data``.
-    return _repo_root() / "data"
+    local = os.environ.get("LOCALAPPDATA") or os.environ.get("HOME")
+    if local:
+        return Path(local) / "AI Video Tool" / "data"
+    return Path.home() / "AI Video Tool" / "data"
 
 
 class Settings:

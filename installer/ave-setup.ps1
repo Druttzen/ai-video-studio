@@ -137,17 +137,33 @@ function Test-EngineInstalled([string]$InstallDir) {
 
 function Get-DefaultDataDir([string]$InstallDir, [array]$Disks) {
     $candidates = New-Object System.Collections.Generic.List[string]
+    if ($env:LOCALAPPDATA) {
+        $candidates.Add((Join-Path $env:LOCALAPPDATA "AI Video Tool\data")) | Out-Null
+    }
     if ($InstallDir) { $candidates.Add((Join-Path $InstallDir "data")) | Out-Null }
-    $candidates.Add("F:\ai-video-studio\data") | Out-Null
     foreach ($cand in $candidates) {
         if ($cand -match '^([A-Za-z]:\\)') {
             $root = $Matches[1]
             $d = $Disks | Where-Object { $_.Root -eq $root } | Select-Object -First 1
-            if ($d -and $d.FreeGb -ge 35) { return $cand }
+            if ($d -and $d.FreeGb -ge 15) { return $cand }
         }
     }
+    $best = $Disks | Sort-Object FreeGb -Descending | Select-Object -First 1
+    if ($best) {
+        return Join-Path $best.Root "AI Video Tool\data"
+    }
     if ($candidates.Count -gt 0) { return $candidates[0] }
-    return "F:\ai-video-studio\data"
+    return (Join-Path $env:USERPROFILE "AI Video Tool\data")
+}
+
+function Ensure-SevenZipReady {
+    if (Get-SevenZipExe) { return }
+    $tools = Join-Path (Get-ScriptRoot) "tools"
+    New-Item -ItemType Directory -Force -Path $tools | Out-Null
+    $dest = Join-Path $tools "7zr.exe"
+    Write-Host "  -> 7zr: downloading extractor..." -ForegroundColor Cyan
+    Download-FileWithProgress -Url "https://www.7-zip.org/a/7zr.exe" -Destination $dest -Label "7zr" -ApproxTotal 600000
+    if (-not (Test-Path $dest)) { throw "Failed to download 7zr.exe" }
 }
 
 function Get-SevenZipExe {
@@ -167,12 +183,12 @@ function Get-EngineDownloadSpec($Manifest) {
     $rel = $Manifest.release
     $dl = $rel.downloads.engine_win64
     if (-not $dl) { return $null }
-    $url = if ($dl.url) { $dl.url } else {
-        $tag = $rel.tag
-        $repo = $rel.github_repo
-        if (-not $tag -or -not $repo) { return $null }
+    $tag = if ($rel.engine_tag) { $rel.engine_tag } elseif ($rel.tag) { $rel.tag } else { $null }
+    $repo = $rel.github_repo
+    $url = if ($dl.url) { $dl.url } elseif ($tag -and $repo) {
         "https://github.com/$repo/releases/download/$tag/$($dl.filename)"
-    }
+    } else { $null }
+    if (-not $url) { return $null }
     return [pscustomobject]@{
         url = $url
         archive = if ($dl.archive) { $dl.archive } else { "7z" }
@@ -243,6 +259,7 @@ function Expand-EngineArchive {
     try {
         switch ($ArchiveType) {
             "7z" {
+                Ensure-SevenZipReady
                 $seven = Get-SevenZipExe
                 if (-not $seven) {
                     throw "7-Zip is required to extract the engine. Install from https://www.7-zip.org/ and re-run setup."
@@ -393,6 +410,27 @@ function Select-ModelsToDownload {
     )
     $missing = @($Catalog | Where-Object { -not $_.downloaded })
     if ($missing.Count -eq 0) { return @() }
+
+    if ($PostInstall -and ($DownloadModels -eq "default" -or -not $DownloadModels)) {
+        foreach ($meta in $Manifest.models) {
+            if (-not (Test-ModelEligible $meta $Gpu $Disks)) { continue }
+            if (@($missing.id) -contains $meta.id) {
+                if ($meta.default) {
+                    Write-Host "  Auto-selected $($meta.name) for this hardware." -ForegroundColor DarkGray
+                    return @($meta.id)
+                }
+            }
+        }
+        foreach ($meta in $Manifest.models) {
+            if (-not (Test-ModelEligible $meta $Gpu $Disks)) { continue }
+            if (@($missing.id) -contains $meta.id) {
+                Write-Host "  Auto-selected $($meta.name) for this hardware." -ForegroundColor DarkGray
+                return @($meta.id)
+            }
+        }
+        Write-Host "  No models fit this GPU/disk yet - use the Models tab after launch." -ForegroundColor Yellow
+        return @()
+    }
 
     if ($DownloadModels -eq "all") {
         return @($missing | ForEach-Object { $_.id })
@@ -692,7 +730,8 @@ if ($engineOk -and $manifest) {
         $null = Install-ModelsPhase $installDir $dataDir $manifest $gpu $disks $DownloadModels -PostInstall:$PostInstall -Quiet:$Quiet -SkipModels:$SkipModels
     } catch {
         Write-Host "  Model download failed: $_" -ForegroundColor Red
-        $fail = $true
+        Write-Host "  Open the Models tab after launch to retry." -ForegroundColor Yellow
+        if (-not $PostInstall) { $fail = $true }
     }
 } elseif (-not $SkipModels) {
     Write-Host "[4/4] Models skipped - install engine first." -ForegroundColor DarkYellow
@@ -715,7 +754,7 @@ if ($engineOk -and -not $fail) {
     Write-Host "Setup finished with model download errors." -ForegroundColor Red
 }
 
-if (-not $SkipLaunch -and $engineOk -and -not $fail -and -not $Quiet) {
+if (-not $SkipLaunch -and $engineOk -and -not $Quiet) {
     $app = Join-Path $installDir "ai-video-tool.exe"
     if (Test-Path $app) {
         Write-Host "Launching AI Video Tool..."

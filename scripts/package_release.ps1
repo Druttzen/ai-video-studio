@@ -53,6 +53,8 @@ $installer = Get-ChildItem -Path $nsisDir -Filter "*setup.exe" -ErrorAction Sile
     Sort-Object LastWriteTime -Descending | Select-Object -First 1
 if ($installer) {
     Copy-Item -Force $installer.FullName (Join-Path $release "install.exe")
+    $primary = Join-Path $release "AI-Video-Tool-Setup-$appVersion.exe"
+    Copy-Item -Force $installer.FullName $primary
     $branded = Join-Path $release "DjMAD-AI-Video-Tool-Setup-$appVersion.exe"
     Copy-Item -Force $installer.FullName $branded
 }
@@ -77,9 +79,9 @@ Get-ChildItem $release | ForEach-Object {
 Write-Host ""
 if ($Minimal) {
     Write-Host "GitHub install flow:"
-    Write-Host "  1. Upload DjMAD-AI-Video-Tool-Setup-$appVersion.exe (~3 MB)"
-    Write-Host "  2. Upload ave-engine-win64.7z from scripts/publish_engine_asset.ps1 (~2 GB)"
-    Write-Host "  3. User runs Setup -> console downloads engine + default model with progress bars"
+    Write-Host "  1. Upload AI-Video-Tool-Setup-$appVersion.exe (~3 MB) - single file for all users"
+    Write-Host "  2. Engine asset ave-engine-win64.7z on GitHub release (engine_tag in manifest.json)"
+    Write-Host "  3. User runs Setup -> console downloads engine + best-fit model with progress bars"
 } else {
     Write-Host "Offline install flow:"
     Write-Host "  1. Run release\install.exe (or standalone SFX/ZIP)"

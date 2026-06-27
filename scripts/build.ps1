@@ -31,6 +31,8 @@ if ($minimal) {
 }
 
 $installerSrc = Join-Path $root "installer"
+& (Join-Path $PSScriptRoot "fetch_7zr.ps1")
+
 $installerDst = Join-Path $root "app\src-tauri\resources\installer"
 New-Item -ItemType Directory -Force -Path $installerDst | Out-Null
 Copy-Item -Force (Join-Path $installerSrc "*.cmd") $installerDst
