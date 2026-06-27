@@ -153,16 +153,26 @@ function Get-ScriptRoot {
 
 function Resolve-InstallDir {
     param([string]$Explicit)
-    if ($Explicit) { return (Resolve-Path $Explicit).Path }
+    if ($Explicit) {
+        try {
+            if (Test-Path -LiteralPath $Explicit) {
+                return (Resolve-Path -LiteralPath $Explicit).Path
+            }
+        } catch {}
+        return [System.IO.Path]::GetFullPath($Explicit)
+    }
 
-    $exe = Get-Process -Id $PID -ErrorAction SilentlyContinue
-    # Prefer parent ai-video-tool.exe location when re-run from app folder.
+    if ($env:AVE_INSTALL_DIR -and (Test-Path -LiteralPath $env:AVE_INSTALL_DIR)) {
+        return (Resolve-Path -LiteralPath $env:AVE_INSTALL_DIR).Path
+    }
+
     foreach ($cand in @(
         (Join-Path (Get-Location) "ai-video-tool.exe"),
         (Join-Path $env:LOCALAPPDATA "AI Video Tool\ai-video-tool.exe"),
+        (Join-Path $env:LOCALAPPDATA "Programs\AI Video Tool\ai-video-tool.exe"),
         (Join-Path $env:ProgramFiles "AI Video Tool\ai-video-tool.exe")
     )) {
-        if (Test-Path $cand) { return (Split-Path $cand -Parent) }
+        if (Test-Path -LiteralPath $cand) { return (Split-Path -LiteralPath $cand -Parent) }
     }
     return (Get-Location).Path
 }
@@ -170,10 +180,13 @@ function Resolve-InstallDir {
 function Get-PayloadRoots([string]$InstallDir, [string]$SourceDir) {
     $roots = New-Object System.Collections.Generic.List[string]
     foreach ($p in @($SourceDir, $InstallDir, (Get-ScriptRoot), (Split-Path (Get-ScriptRoot) -Parent))) {
-        if ($p -and (Test-Path $p)) {
-            $norm = (Resolve-Path $p).Path
-            if (-not $roots.Contains($norm)) { $roots.Add($norm) | Out-Null }
-        }
+        if (-not $p) { continue }
+        try {
+            if (Test-Path -LiteralPath $p) {
+                $norm = (Resolve-Path -LiteralPath $p).Path
+                if (-not $roots.Contains($norm)) { $roots.Add($norm) | Out-Null }
+            }
+        } catch {}
     }
     return $roots
 }

@@ -39,30 +39,46 @@ pub struct SetupProgress {
     pub message: String,
 }
 
-pub fn resolve_setup_script(app: &AppHandle) -> Result<PathBuf, String> {
-    if let Ok(res) = app.path().resource_dir() {
-        let p = res.join("installer").join("ave-setup.ps1");
-        if p.exists() {
-            return Ok(p);
+pub fn resolve_install_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    if let Ok(dir) = app.path().executable_dir() {
+        if dir.exists() {
+            return Ok(dir);
         }
+    }
+    std::env::current_exe()
+        .map_err(|e| e.to_string())
+        .and_then(|exe| {
+            exe.parent()
+                .map(|p| p.to_path_buf())
+                .ok_or_else(|| "could not resolve install directory from executable".into())
+        })
+}
+
+pub fn resolve_setup_script(app: &AppHandle) -> Result<PathBuf, String> {
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    if let Ok(res) = app.path().resource_dir() {
+        candidates.push(res.join("installer").join("ave-setup.ps1"));
+    }
+    if let Ok(dir) = resolve_install_dir(app) {
+        candidates.push(dir.join("resources").join("installer").join("ave-setup.ps1"));
+        candidates.push(dir.join("ave-setup.ps1"));
     }
     if let Ok(exe) = std::env::current_exe() {
         if let Some(parent) = exe.parent() {
-            for name in ["ave-setup.ps1", "resources/installer/ave-setup.ps1"] {
-                let p = parent.join(name);
-                if p.exists() {
-                    return Ok(p);
-                }
-            }
+            candidates.push(parent.join("resources").join("installer").join("ave-setup.ps1"));
+            candidates.push(parent.join("ave-setup.ps1"));
+        }
+    }
+    for p in candidates {
+        if p.exists() {
+            return Ok(p);
         }
     }
     Err("ave-setup.ps1 not found".into())
 }
 
 fn install_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    app.path()
-        .executable_dir()
-        .map_err(|e| e.to_string())
+    resolve_install_dir(app)
 }
 
 fn run_powershell_json(script: &PathBuf, args: &[&str]) -> Result<String, String> {
