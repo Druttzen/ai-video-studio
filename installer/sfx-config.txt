@@ -1,0 +1,6 @@
+;!@Install@!UTF-8!
+Title="Dj MAD - AI Video Tool Setup"
+BeginPrompt="This installer extracts Dj MAD AI Video Tool (~5 GB engine bundle) and starts setup.\n\nContinue?"
+ExecuteFile="install.exe"
+ExecuteParameters=""
+;!@InstallEnd@!

@@ -36,7 +36,8 @@
       "resources/installer/ave-setup.ps1",
       "resources/installer/ave-uninstall.cmd",
       "resources/installer/ave-uninstall.ps1",
-      "resources/installer/manifest.json"
+      "resources/installer/manifest.json",
+      "resources/installer/tools/"
     ],
     "icon": [
       "icons/32x32.png",

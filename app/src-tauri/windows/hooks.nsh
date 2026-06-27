@@ -3,7 +3,7 @@
 !macro NSIS_HOOK_POSTINSTALL
   DetailPrint "Starting AI Video Tool component setup..."
   ; $EXEDIR = folder where install.exe was run (often contains payload\ave-engine)
-  ExecWait '"$COMSPEC" /c start "AI Video Tool Setup" /wait "$INSTDIR\resources\installer\ave-setup.cmd" --postinstall --inst-dir "$INSTDIR" --source "$EXEDIR"'
+  ExecWait '"$COMSPEC" /c start "AI Video Tool Setup" /wait "$INSTDIR\resources\installer\ave-setup.cmd" --postinstall --inst-dir "$INSTDIR" --source "$EXEDIR" --DownloadModels default'
 !macroend
 
 !macro NSIS_HOOK_PREUNINSTALL

@@ -1,12 +1,15 @@
 # Package release artifacts for distribution.
 #
-# Layout:
-#   release/install.exe          - phase 1: installs main app (~3 MB)
-#   release/setup.cmd            - re-run component setup anytime
-#   release/ai-video-tool.exe    - portable app binary
-#   release/payload/ave-engine/  - phase 3 payload (copied by setup after scan)
+# Modes:
+#   (default)  Full offline bundle with payload\ave-engine\ + standalone ZIP/SFX
+#   -Minimal    GitHub-sized release (~15 MB): install.exe only; setup downloads engine online
 #
-# Run install.exe from this folder so setup finds payload\ave-engine automatically.
+# Minimal layout:
+#   release/install.exe
+#   release/DjMAD-AI-Video-Tool-Setup-{version}.exe
+#   release/setup.cmd, manifest.json, README-INSTALL.txt
+
+param([switch]$Minimal)
 
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
@@ -14,40 +17,53 @@ $release = Join-Path $root "release"
 $payload = Join-Path $release "payload"
 $tauriOut = Join-Path $root "app\src-tauri\target\release"
 $nsisDir = Join-Path $tauriOut "bundle\nsis"
+$tauriConf = Join-Path $root "app\src-tauri\tauri.conf.json"
+$appVersion = (Get-Content $tauriConf -Raw | ConvertFrom-Json).version
 
 $appExe = Join-Path $tauriOut "ai-video-tool.exe"
 if (-not (Test-Path $appExe)) { throw "Missing $appExe - run tauri build first" }
 
 $engineSrc = Join-Path $root "app\src-tauri\binaries\ave-engine"
-if (-not (Test-Path $engineSrc)) { throw "Missing engine bundle - run build_engine.ps1 first" }
+if (-not $Minimal -and -not (Test-Path $engineSrc)) {
+    throw "Missing engine bundle - run build_engine.ps1 first (or use -Minimal)"
+}
 
 New-Item -ItemType Directory -Force -Path $release | Out-Null
-# Clean stale artifacts from older portable-only layouts.
 $staleEngine = Join-Path $release "ave-engine"
 if (Test-Path $staleEngine) { Remove-Item -Recurse -Force $staleEngine }
 
-New-Item -ItemType Directory -Force -Path $payload | Out-Null
-
-Copy-Item -Force $appExe (Join-Path $release "ai-video-tool.exe")
-
 $installerSrc = Join-Path $root "installer"
+Copy-Item -Force $appExe (Join-Path $release "ai-video-tool.exe")
 Copy-Item -Force (Join-Path $installerSrc "ave-setup.cmd") (Join-Path $release "setup.cmd")
 Copy-Item -Force (Join-Path $installerSrc "ave-setup.ps1") (Join-Path $release "ave-setup.ps1")
 Copy-Item -Force (Join-Path $installerSrc "ave-uninstall.cmd") (Join-Path $release "uninstall.cmd")
 Copy-Item -Force (Join-Path $installerSrc "ave-uninstall.ps1") (Join-Path $release "ave-uninstall.ps1")
 Copy-Item -Force (Join-Path $installerSrc "manifest.json") (Join-Path $release "manifest.json")
 
-$engineDst = Join-Path $payload "ave-engine"
-if (Test-Path $engineDst) { Remove-Item -Recurse -Force $engineDst }
-Copy-Item -Recurse -Force $engineSrc $engineDst
+if ($Minimal) {
+    if (Test-Path $payload) { Remove-Item -Recurse -Force $payload }
+} else {
+    New-Item -ItemType Directory -Force -Path $payload | Out-Null
+    $engineDst = Join-Path $payload "ave-engine"
+    if (Test-Path $engineDst) { Remove-Item -Recurse -Force $engineDst }
+    Copy-Item -Recurse -Force $engineSrc $engineDst
+}
 
 $installer = Get-ChildItem -Path $nsisDir -Filter "*setup.exe" -ErrorAction SilentlyContinue |
     Sort-Object LastWriteTime -Descending | Select-Object -First 1
 if ($installer) {
     Copy-Item -Force $installer.FullName (Join-Path $release "install.exe")
+    $branded = Join-Path $release "DjMAD-AI-Video-Tool-Setup-$appVersion.exe"
+    Copy-Item -Force $installer.FullName $branded
 }
 
-Write-Host "=== Release package ==="
+$readmeTpl = Join-Path $installerSrc "README-INSTALL.txt"
+if (Test-Path $readmeTpl) {
+    (Get-Content $readmeTpl -Raw).Replace("{{VERSION}}", $appVersion) |
+        Set-Content -Encoding UTF8 (Join-Path $release "README-INSTALL.txt")
+}
+
+Write-Host "=== Release package $(if ($Minimal) { '(minimal / GitHub)' } else { '(full offline)' }) ==="
 Get-ChildItem $release | ForEach-Object {
     if ($_.PSIsContainer) {
         $gb = [math]::Round((Get-ChildItem $_.FullName -Recurse -File | Measure-Object Length -Sum).Sum / 1GB, 2)
@@ -57,14 +73,18 @@ Get-ChildItem $release | ForEach-Object {
         Write-Host "  $($_.Name)  ($mb MB)"
     }
 }
+
 Write-Host ""
-Write-Host "Install flow:"
-Write-Host "  1. Run release\install.exe  (installs ai-video-tool.exe)"
-Write-Host "  2. Setup scans GPU, disk, WebView2, missing components"
-Write-Host "  3. CMD window copies payload\ave-engine\ next to the installed exe"
-Write-Host "  4. Optional: download AI models (live progress + ETA)"
-Write-Host ""
-Write-Host "Portable: run release\ai-video-tool.exe then release\setup.cmd"
-Write-Host "Auto-download default model: setup.cmd --DownloadModels default"
-Write-Host "Uninstall: Windows Settings > Apps, or run uninstall.cmd from the install folder"
-Write-Host "Re-run setup anytime: release\setup.cmd --inst-dir `"<install path>`""
+if ($Minimal) {
+    Write-Host "GitHub install flow:"
+    Write-Host "  1. Upload DjMAD-AI-Video-Tool-Setup-$appVersion.exe (~3 MB)"
+    Write-Host "  2. Upload ave-engine-win64.7z from scripts/publish_engine_asset.ps1 (~2 GB)"
+    Write-Host "  3. User runs Setup -> console downloads engine + default model with progress bars"
+} else {
+    Write-Host "Offline install flow:"
+    Write-Host "  1. Run release\install.exe (or standalone SFX/ZIP)"
+    Write-Host "  2. Setup copies payload\ave-engine\ with progress bars"
+    Write-Host "  3. Optional model download"
+    Write-Host ""
+    & (Join-Path $PSScriptRoot "package_standalone.ps1")
+}

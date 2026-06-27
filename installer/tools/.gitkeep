@@ -1,0 +1,2 @@
+# Placeholder so Tauri bundles resources/installer/tools/.
+# build.ps1 copies 7zr.exe here when 7-Zip is installed on the build machine.

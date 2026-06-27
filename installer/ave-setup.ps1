@@ -135,9 +135,165 @@ function Test-EngineInstalled([string]$InstallDir) {
     return (Test-Path $exe)
 }
 
-function Get-DefaultDataDir([array]$Disks) {
-    # Single install tree — everything under F:\ai-video-studio.
+function Get-DefaultDataDir([string]$InstallDir, [array]$Disks) {
+    $candidates = New-Object System.Collections.Generic.List[string]
+    if ($InstallDir) { $candidates.Add((Join-Path $InstallDir "data")) | Out-Null }
+    $candidates.Add("F:\ai-video-studio\data") | Out-Null
+    foreach ($cand in $candidates) {
+        if ($cand -match '^([A-Za-z]:\\)') {
+            $root = $Matches[1]
+            $d = $Disks | Where-Object { $_.Root -eq $root } | Select-Object -First 1
+            if ($d -and $d.FreeGb -ge 35) { return $cand }
+        }
+    }
+    if ($candidates.Count -gt 0) { return $candidates[0] }
     return "F:\ai-video-studio\data"
+}
+
+function Get-SevenZipExe {
+    foreach ($p in @(
+        (Join-Path (Get-ScriptRoot) "tools\7zr.exe"),
+        (Join-Path (Get-ScriptRoot) "tools\7z.exe"),
+        "${env:ProgramFiles}\7-Zip\7z.exe",
+        "${env:ProgramFiles(x86)}\7-Zip\7z.exe"
+    )) {
+        if ($p -and (Test-Path $p)) { return $p }
+    }
+    return $null
+}
+
+function Get-EngineDownloadSpec($Manifest) {
+    if (-not $Manifest -or -not $Manifest.release) { return $null }
+    $rel = $Manifest.release
+    $dl = $rel.downloads.engine_win64
+    if (-not $dl) { return $null }
+    $url = if ($dl.url) { $dl.url } else {
+        $tag = $rel.tag
+        $repo = $rel.github_repo
+        if (-not $tag -or -not $repo) { return $null }
+        "https://github.com/$repo/releases/download/$tag/$($dl.filename)"
+    }
+    return [pscustomobject]@{
+        url = $url
+        archive = if ($dl.archive) { $dl.archive } else { "7z" }
+        folder = if ($dl.folder) { $dl.folder } else { "ave-engine" }
+        approx_bytes = if ($dl.approx_size_gb) { [long]($dl.approx_size_gb * 1GB) } else { 0 }
+        sha256 = if ($dl.sha256) { $dl.sha256.ToLower() } else { "" }
+    }
+}
+
+function Download-FileWithProgress {
+    param(
+        [Parameter(Mandatory)][string]$Url,
+        [Parameter(Mandatory)][string]$Destination,
+        [string]$Label = "download",
+        [long]$ApproxTotal = 0
+    )
+    $parent = Split-Path $Destination -Parent
+    if ($parent -and -not (Test-Path $parent)) {
+        New-Item -ItemType Directory -Force -Path $parent | Out-Null
+    }
+    if (Test-Path $Destination) { Remove-Item -Force $Destination }
+
+    Write-Host "  -> $Label from $Url" -ForegroundColor DarkGray
+    $request = [System.Net.HttpWebRequest]::Create($Url)
+    $request.UserAgent = "AI-Video-Tool-Setup/1.0"
+    $request.Timeout = 6 * 60 * 60 * 1000
+    $response = $request.GetResponse()
+    try {
+        $total = [long]$response.ContentLength
+        if ($total -le 0) { $total = if ($ApproxTotal -gt 0) { $ApproxTotal } else { 1 } }
+        $stream = $response.GetResponseStream()
+        $fs = [System.IO.File]::Create($Destination)
+        try {
+            $buffer = New-Object byte[] 1048576
+            $done = [long]0
+            $sw = [System.Diagnostics.Stopwatch]::StartNew()
+            while ($true) {
+                $read = $stream.Read($buffer, 0, $buffer.Length)
+                if ($read -le 0) { break }
+                $fs.Write($buffer, 0, $read)
+                $done += $read
+                $elapsed = [math]::Max($sw.Elapsed.TotalSeconds, 0.001)
+                $rate = $done / $elapsed
+                $eta = if ($rate -gt 0 -and $total -gt 1) { ($total - $done) / $rate } else { 0 }
+                $pct = 100.0 * $done / $total
+                Write-ProgressLine $Label $pct $done $total $eta
+            }
+        } finally {
+            $fs.Close()
+            $stream.Close()
+        }
+    } finally {
+        $response.Close()
+    }
+    Write-Host ""
+}
+
+function Expand-EngineArchive {
+    param(
+        [Parameter(Mandatory)][string]$ArchivePath,
+        [Parameter(Mandatory)][string]$DestDir,
+        [Parameter(Mandatory)][string]$ArchiveType,
+        [string]$InnerFolder = "ave-engine"
+    )
+    if (Test-Path $DestDir) { Remove-Item -Recurse -Force $DestDir }
+    $temp = Join-Path $env:TEMP ("ave-engine-extract-" + [guid]::NewGuid().ToString("N"))
+    New-Item -ItemType Directory -Force -Path $temp | Out-Null
+    try {
+        switch ($ArchiveType) {
+            "7z" {
+                $seven = Get-SevenZipExe
+                if (-not $seven) {
+                    throw "7-Zip is required to extract the engine. Install from https://www.7-zip.org/ and re-run setup."
+                }
+                & $seven x ("-o" + $temp) "-y" $ArchivePath | Out-Null
+                if ($LASTEXITCODE -ne 0) { throw "7z extract failed (exit $LASTEXITCODE)" }
+            }
+            "zip" {
+                Expand-Archive -Path $ArchivePath -DestinationPath $temp -Force
+            }
+            default { throw "Unknown archive type: $ArchiveType" }
+        }
+        $inner = Join-Path $temp $InnerFolder
+        if (Test-Path $inner) {
+            Move-Item -Force $inner $DestDir
+        } elseif (Test-Path (Join-Path $temp "ave-engine.exe")) {
+            Move-Item -Force $temp $DestDir
+        } else {
+            $sub = Get-ChildItem $temp -Directory | Select-Object -First 1
+            if ($sub) { Move-Item -Force $sub.FullName $DestDir }
+            else { throw "Archive did not contain expected engine folder" }
+        }
+    } finally {
+        if (Test-Path $temp) { Remove-Item -Recurse -Force $temp -ErrorAction SilentlyContinue }
+    }
+}
+
+function Install-WebView2Bootstrapper($Manifest) {
+    $spec = $null
+    if ($Manifest -and $Manifest.release -and $Manifest.release.downloads) {
+        $spec = $Manifest.release.downloads.webview2_bootstrapper
+    }
+    if (-not $spec) {
+        $spec = @{
+            url = "https://go.microsoft.com/fwlink/p/?LinkId=2124703"
+            filename = "MicrosoftEdgeWebView2RuntimeInstaller.exe"
+        }
+    }
+    $cache = Join-Path $env:TEMP "ave-webview2"
+    New-Item -ItemType Directory -Force -Path $cache | Out-Null
+    $installer = Join-Path $cache $spec.filename
+    Download-FileWithProgress -Url $spec.url -Destination $installer -Label "webview2" -ApproxTotal 150000000
+    Write-Host "  -> webview2: installing runtime (silent)..." -ForegroundColor Cyan
+    $p = Start-Process -FilePath $installer -ArgumentList "/silent", "/install" -Wait -PassThru
+    if ($p.ExitCode -ne 0 -and $p.ExitCode -ne 3010) {
+        throw "WebView2 installer exited with code $($p.ExitCode)"
+    }
+    if (-not (Test-WebView2)) {
+        throw "WebView2 still not detected after install"
+    }
+    Write-Host "  -> webview2: done" -ForegroundColor Green
 }
 
 function Copy-TreeWithProgress([string]$Src, [string]$Dst, [string]$Label) {
@@ -398,7 +554,8 @@ $disks = @(Get-DiskCandidates)
 $webview2 = Test-WebView2
 $engineOk = Test-EngineInstalled $installDir
 $enginePayload = Find-EnginePayload $payloadRoots
-$dataDir = Get-DefaultDataDir $disks
+$engineDownload = if (-not $enginePayload) { Get-EngineDownloadSpec $manifest } else { $null }
+$dataDir = Get-DefaultDataDir $installDir $disks
 $dataParent = Split-Path $dataDir -Parent
 
 Write-Host "  GPU:      $(if ($gpu.present) { "$($gpu.name) ($($gpu.vram_gb) GB VRAM)" } else { 'None detected (CPU mode)' })"
@@ -410,8 +567,10 @@ Write-Host "  Engine:   $(if ($engineOk) { 'installed' } else { 'MISSING' })"
 Write-Host "  Data dir: $dataDir"
 if ($enginePayload) {
     Write-Host "  Payload:  $enginePayload" -ForegroundColor DarkGray
+} elseif ($engineDownload) {
+    Write-Host "  Payload:  online ($($engineDownload.url))" -ForegroundColor DarkGray
 } else {
-    Write-Host "  Payload:  not found (place ave-engine next to install.exe or in payload\)" -ForegroundColor DarkYellow
+    Write-Host "  Payload:  not found (local or online)" -ForegroundColor DarkYellow
 }
 Write-Host ""
 
@@ -421,13 +580,19 @@ if (-not $engineOk) {
     if ($enginePayload) {
         $size = (Get-ChildItem $enginePayload -Recurse -File | Measure-Object Length -Sum).Sum
         $plan.Add([pscustomobject]@{ id = "engine"; action = "copy"; src = $enginePayload; dst = (Join-Path $installDir "ave-engine"); bytes = $size }) | Out-Null
+    } elseif ($engineDownload) {
+        $plan.Add([pscustomobject]@{
+            id = "engine"; action = "download"; src = $engineDownload.url; dst = (Join-Path $installDir "ave-engine")
+            bytes = $engineDownload.approx_bytes; archive = $engineDownload.archive
+            folder = $engineDownload.folder; sha256 = $engineDownload.sha256
+        }) | Out-Null
     } else {
         $plan.Add([pscustomobject]@{ id = "engine"; action = "missing"; src = $null; dst = (Join-Path $installDir "ave-engine"); bytes = 0 }) | Out-Null
     }
 }
 
 if (-not $webview2) {
-    $plan.Add([pscustomobject]@{ id = "webview2"; action = "manual"; src = $null; dst = $null; bytes = 0 }) | Out-Null
+    $plan.Add([pscustomobject]@{ id = "webview2"; action = "webview2_install"; src = $null; dst = $null; bytes = 0 }) | Out-Null
 }
 
 if (-not (Test-Path $dataDir)) {
@@ -438,7 +603,9 @@ Write-Host "[PLAN] Components:" -ForegroundColor Yellow
 foreach ($item in $plan) {
     switch ($item.action) {
         "copy"   { Write-Host ("  [INSTALL] {0,-12} {1} -> {2}" -f $item.id, (Format-Bytes $item.bytes), $item.dst) }
+        "download" { Write-Host ("  [DOWNLOAD]{0,-12} ~{1} from GitHub" -f $item.id, (Format-Bytes $item.bytes)) }
         "mkdir"  { Write-Host ("  [CREATE ] {0,-12} {1}" -f $item.id, $item.dst) }
+        "webview2_install" { Write-Host ("  [INSTALL] {0,-12} download + silent install" -f $item.id) }
         "manual" { Write-Host ("  [MANUAL ] {0,-12} install WebView2 from Microsoft" -f $item.id) -ForegroundColor Red }
         "missing" { Write-Host ("  [MISSING] {0,-12} no payload found - copy payload\ave-engine\ beside install.exe" -f $item.id) -ForegroundColor Red }
         default  { Write-Host ("  [SKIP   ] {0}" -f $item.id) }
@@ -474,6 +641,28 @@ if ($plan.Count -gt 0) {
                 if (Test-Path $item.dst) { Remove-Item -Recurse -Force $item.dst }
                 Copy-TreeWithProgress $item.src $item.dst $item.id
                 Write-Host "  -> $($item.id): done" -ForegroundColor Green
+            }
+            "download" {
+                Write-Host "  -> $($item.id): downloading..." -ForegroundColor Cyan
+                $cache = Join-Path $env:TEMP "ave-setup-cache"
+                New-Item -ItemType Directory -Force -Path $cache | Out-Null
+                $archivePath = Join-Path $cache ("engine-" + [guid]::NewGuid().ToString("N") + "." + $item.archive)
+                try {
+                    Download-FileWithProgress -Url $item.src -Destination $archivePath -Label $item.id -ApproxTotal $item.bytes
+                    if ($item.sha256) {
+                        $hash = (Get-FileHash $archivePath -Algorithm SHA256).Hash.ToLower()
+                        if ($hash -ne $item.sha256) {
+                            throw "SHA256 mismatch for engine download (expected $($item.sha256), got $hash)"
+                        }
+                    }
+                    Expand-EngineArchive -ArchivePath $archivePath -DestDir $item.dst -ArchiveType $item.archive -InnerFolder $item.folder
+                    Write-Host "  -> $($item.id): done" -ForegroundColor Green
+                } finally {
+                    if (Test-Path $archivePath) { Remove-Item -Force $archivePath -ErrorAction SilentlyContinue }
+                }
+            }
+            "webview2_install" {
+                Install-WebView2Bootstrapper $manifest
             }
             "mkdir" {
                 New-Item -ItemType Directory -Force -Path $item.dst | Out-Null
