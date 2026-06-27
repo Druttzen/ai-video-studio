@@ -12,6 +12,11 @@ import os
 from functools import lru_cache
 from pathlib import Path
 
+# Windows: HF cache uses symlinks blobs→snapshots; without Developer Mode or admin
+# this raises WinError 1314 (privilege not held). Must be set before huggingface_hub import.
+if os.name == "nt":
+    os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS", "1")
+
 
 def _default_data_dir() -> Path:
     local = os.environ.get("LOCALAPPDATA") or os.environ.get("HOME")
@@ -36,6 +41,8 @@ class Settings:
         # discoverable, manageable, and removable from the UI.
         os.environ.setdefault("HF_HOME", str(self.models_dir))
         os.environ.setdefault("HF_HUB_ENABLE_HF_TRANSFER", "0")
+        if os.name == "nt":
+            os.environ["HF_HUB_DISABLE_SYMLINKS"] = "1"
 
         self.host = os.environ.get("AVE_HOST", "127.0.0.1")
         self.port = int(os.environ.get("AVE_PORT", "0"))  # 0 => OS picks a free port
