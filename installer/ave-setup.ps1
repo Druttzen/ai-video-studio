@@ -10,6 +10,8 @@ param(
     [switch]$SkipLaunch,
     [string]$DownloadModels = "",
     [switch]$SkipModels,
+    [switch]$InstallAddons,
+    [switch]$SkipAddons,
     [switch]$ScanOnly,
     [switch]$EmitJson
 )
@@ -17,13 +19,58 @@ param(
 $ErrorActionPreference = "Stop"
 $script:EmitJson = [bool]$EmitJson
 
+function Write-EmitLine([string]$Line) {
+    # Piped PowerShell buffers Write-Output; flush each line for live UI progress.
+    [Console]::WriteLine($Line)
+    [Console]::Out.Flush()
+}
+
 function Write-SetupLog([string]$Message) {
     if ($script:EmitJson) {
-        Write-Output ("AVE_SETUP_LOG|$Message")
+        Write-EmitLine ("AVE_SETUP_LOG|$Message")
     } else {
         Write-Host $Message
     }
 }
+
+function Write-SetupPhase([string]$Id, [string]$Title, [string]$State, [int]$Index, [int]$Total) {
+    if ($script:EmitJson) {
+        Write-EmitLine ("AVE_SETUP_PHASE|$Id|$Title|$State|$Index|$Total")
+    } else {
+        Write-Host ("[Phase {0}/{1}] {2} - {3}" -f $Index, $Total, $Title, $State) -ForegroundColor Cyan
+    }
+}
+
+# #region agent log
+function Write-AgentDebugLog {
+    param([string]$HypothesisId, [string]$Location, [string]$Message, $Data = @{})
+    $entry = @{
+        sessionId    = "d02589"
+        hypothesisId = $HypothesisId
+        location     = $Location
+        message      = $Message
+        data         = $Data
+        timestamp    = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+        runId        = "pre-fix"
+    } | ConvertTo-Json -Compress -Depth 6
+    $paths = @(
+        (Join-Path $env:LOCALAPPDATA "AI Video Tool\debug-d02589.log")
+    )
+    $scriptRoot = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
+    if ($scriptRoot) {
+        $paths += (Join-Path (Split-Path $scriptRoot -Parent) "debug-d02589.log")
+    }
+    foreach ($lp in $paths) {
+        try {
+            $parent = Split-Path $lp -Parent
+            if ($parent -and -not (Test-Path $parent)) {
+                New-Item -ItemType Directory -Force -Path $parent | Out-Null
+            }
+            Add-Content -Path $lp -Value $entry -Encoding UTF8
+        } catch {}
+    }
+}
+# #endregion
 
 function Estimate-EtaMinutes([long]$Bytes) {
     if ($Bytes -le 0) { return 1 }
@@ -69,13 +116,22 @@ function Export-SetupScanJson {
     }
 
     $models = @()
-    if ($Manifest -and $Manifest.models -and (-not $EngineOk)) {
+    $addons = @()
+    $phaseTotal = 4
+    if ($Manifest -and $Manifest.install_phases) {
+        $phaseTotal = @($Manifest.install_phases).Count
+    }
+    if ($Manifest -and $Manifest.models) {
         foreach ($meta in $Manifest.models) {
             $bytes = [long]($meta.approx_size_gb * 1GB)
             $eligible = Test-ModelEligible $meta $Gpu $Disks
             $auto = $false
-            if ($eligible -and $meta.default -and ($DownloadModels -eq "default" -or -not $DownloadModels)) {
-                $auto = $true
+            if ($eligible -and -not $EngineOk) {
+                if ($DownloadModels -eq "eligible" -or $DownloadModels -eq "all") {
+                    $auto = $true
+                } elseif ($DownloadModels -eq "default" -and $meta.default) {
+                    $auto = $true
+                }
             }
             $models += @{
                 id = $meta.id
@@ -86,6 +142,37 @@ function Export-SetupScanJson {
                 auto_download = $auto
             }
             if ($auto) { $totalBytes += $bytes }
+        }
+    }
+    if ($Manifest -and $Manifest.optional_addons -and -not $EngineOk) {
+        foreach ($addon in $Manifest.optional_addons) {
+            $bytes = [long]($addon.approx_size_gb * 1GB)
+            if ($addon.checkpoint -and $addon.checkpoint.approx_bytes) {
+                $bytes += [long]$addon.checkpoint.approx_bytes
+            }
+            $addons += @{
+                id = $addon.id
+                name = $addon.name
+                bytes = $bytes
+                eta_minutes = (Estimate-EtaMinutes $bytes)
+                auto_install = $true
+            }
+            $totalBytes += $bytes
+        }
+    }
+
+    $phases = @()
+    if ($Manifest -and $Manifest.install_phases) {
+        $idx = 1
+        foreach ($ph in $Manifest.install_phases) {
+            $phases += @{
+                id = $ph.id
+                title = $ph.title
+                description = $ph.description
+                index = $idx
+                total = $phaseTotal
+            }
+            $idx++
         }
     }
 
@@ -102,12 +189,14 @@ function Export-SetupScanJson {
         engine_installed = $EngineOk
         items = $items
         models = $models
+        addons = $addons
+        phases = $phases
         total_bytes = $totalBytes
         eta_minutes = (Estimate-EtaMinutes $totalBytes)
         can_run = ($blocked.Count -eq 0) -or ($Plan | Where-Object { $_.action -in @("copy", "download", "webview2_install", "mkdir") }).Count -gt 0
         blocked = @($blocked | ForEach-Object { $_.id })
     }
-    Write-Output ("AVE_SETUP_JSON|" + ($scan | ConvertTo-Json -Compress -Depth 8))
+    Write-EmitLine ("AVE_SETUP_JSON|" + ($scan | ConvertTo-Json -Compress -Depth 8))
 }
 
 function Write-Banner {
@@ -135,7 +224,7 @@ function Format-Duration([double]$Seconds) {
 
 function Write-ProgressLine([string]$Label, [double]$Pct, [long]$Done, [long]$Total, [double]$EtaSec) {
     if ($script:EmitJson) {
-        Write-Output ("AVE_SETUP_PROGRESS|$Label|$Pct|$Done|$Total|$EtaSec|")
+        Write-EmitLine ("AVE_SETUP_PROGRESS|$Label|$Pct|$Done|$Total|$EtaSec|")
         return
     }
     $barWidth = 28
@@ -253,23 +342,12 @@ function Test-EngineInstalled([string]$InstallDir) {
 }
 
 function Get-DefaultDataDir([string]$InstallDir, [array]$Disks) {
-    $candidates = New-Object System.Collections.Generic.List[string]
+    if ($InstallDir) {
+        return (Join-Path $InstallDir "data")
+    }
     if ($env:LOCALAPPDATA) {
-        $candidates.Add((Join-Path $env:LOCALAPPDATA "AI Video Tool\data")) | Out-Null
+        return (Join-Path $env:LOCALAPPDATA "AI Video Tool\data")
     }
-    if ($InstallDir) { $candidates.Add((Join-Path $InstallDir "data")) | Out-Null }
-    foreach ($cand in $candidates) {
-        if ($cand -match '^([A-Za-z]:\\)') {
-            $root = $Matches[1]
-            $d = $Disks | Where-Object { $_.Root -eq $root } | Select-Object -First 1
-            if ($d -and $d.FreeGb -ge 15) { return $cand }
-        }
-    }
-    $best = $Disks | Sort-Object FreeGb -Descending | Select-Object -First 1
-    if ($best) {
-        return Join-Path $best.Root "AI Video Tool\data"
-    }
-    if ($candidates.Count -gt 0) { return $candidates[0] }
     return (Join-Path $env:USERPROFILE "AI Video Tool\data")
 }
 
@@ -370,6 +448,12 @@ function Expand-EngineArchive {
         [Parameter(Mandatory)][string]$ArchiveType,
         [string]$InnerFolder = "ave-engine"
     )
+    # #region agent log
+    Write-AgentDebugLog -HypothesisId "B" -Location "ave-setup.ps1:Expand-EngineArchive" -Message "extract starting" -Data @{
+        archivePath = $ArchivePath; destDir = $DestDir; archiveType = $ArchiveType
+        archiveBytes = if (Test-Path $ArchivePath) { (Get-Item $ArchivePath).Length } else { 0 }
+    }
+    # #endregion
     if (Test-Path $DestDir) { Remove-Item -Recurse -Force $DestDir }
     $temp = Join-Path $env:TEMP ("ave-engine-extract-" + [guid]::NewGuid().ToString("N"))
     New-Item -ItemType Directory -Force -Path $temp | Out-Null
@@ -381,8 +465,40 @@ function Expand-EngineArchive {
                 if (-not $seven) {
                     throw "7-Zip is required to extract the engine. Install from https://www.7-zip.org/ and re-run setup."
                 }
-                & $seven x ("-o" + $temp) "-y" $ArchivePath | Out-Null
-                if ($LASTEXITCODE -ne 0) { throw "7z extract failed (exit $LASTEXITCODE)" }
+                $archiveBytes = (Get-Item $ArchivePath).Length
+                $estTotal = [long]($archiveBytes * 3)
+                if ($script:EmitJson) {
+                    Write-SetupLog "Extracting AI engine into install folder..."
+                    Write-ProgressLine "engine-extract" 0 0 $estTotal 0
+                }
+                $psi = New-Object System.Diagnostics.ProcessStartInfo
+                $psi.FileName = $seven
+                $psi.Arguments = "x `"-o$temp`" -y `"$ArchivePath`""
+                $psi.UseShellExecute = $false
+                $psi.CreateNoWindow = $true
+                $psi.RedirectStandardOutput = $true
+                $psi.RedirectStandardError = $true
+                $p = [System.Diagnostics.Process]::Start($psi)
+                $sw = [System.Diagnostics.Stopwatch]::StartNew()
+                while (-not $p.HasExited) {
+                    $extracted = 0L
+                    if (Test-Path $temp) {
+                        $extracted = (Get-ChildItem $temp -Recurse -File -ErrorAction SilentlyContinue |
+                            Measure-Object -Property Length -Sum).Sum
+                        if (-not $extracted) { $extracted = 0 }
+                    }
+                    $elapsed = [math]::Max($sw.Elapsed.TotalSeconds, 0.001)
+                    $rate = $extracted / $elapsed
+                    $eta = if ($rate -gt 0) { ($estTotal - $extracted) / $rate } else { 0 }
+                    $pct = [math]::Min(99, 100.0 * $extracted / $estTotal)
+                    Write-ProgressLine "engine-extract" $pct $extracted $estTotal $eta
+                    if (-not $p.WaitForExit(1000)) { continue }
+                }
+                if ($p.ExitCode -ne 0) {
+                    $err = $p.StandardError.ReadToEnd()
+                    throw "7z extract failed (exit $($p.ExitCode)): $err"
+                }
+                Write-ProgressLine "engine-extract" 100 $estTotal $estTotal 0
             }
             "zip" {
                 Expand-Archive -Path $ArchivePath -DestinationPath $temp -Force
@@ -402,6 +518,11 @@ function Expand-EngineArchive {
     } finally {
         if (Test-Path $temp) { Remove-Item -Recurse -Force $temp -ErrorAction SilentlyContinue }
     }
+    # #region agent log
+    Write-AgentDebugLog -HypothesisId "B" -Location "ave-setup.ps1:Expand-EngineArchive" -Message "extract finished" -Data @{
+        destDir = $DestDir; engineExeExists = (Test-Path (Join-Path $DestDir "ave-engine.exe"))
+    }
+    # #endregion
 }
 
 function Install-WebView2Bootstrapper($Manifest) {
@@ -502,7 +623,17 @@ function Invoke-EngineCli([string]$EngineExe, [string]$DataDir, [string[]]$Engin
 }
 
 function Get-EngineModelStatus([string]$EngineExe, [string]$DataDir) {
+    # #region agent log
+    Write-AgentDebugLog -HypothesisId "E" -Location "ave-setup.ps1:Get-EngineModelStatus" -Message "models-status starting" -Data @{
+        engineExe = $EngineExe; dataDir = $DataDir; engineExists = (Test-Path $EngineExe)
+    }
+    # #endregion
     $r = Invoke-EngineCli $EngineExe $DataDir @("models-status")
+    # #region agent log
+    Write-AgentDebugLog -HypothesisId "E" -Location "ave-setup.ps1:Get-EngineModelStatus" -Message "models-status finished" -Data @{
+        exitCode = $r.ExitCode; stdoutLen = $r.StdOut.Length; stderrPreview = $r.StdErr.Substring(0, [Math]::Min(200, $r.StdErr.Length))
+    }
+    # #endregion
     if ($r.ExitCode -ne 0) { return @() }
     try { return @($r.StdOut | ConvertFrom-Json) } catch { return @() }
 }
@@ -527,6 +658,20 @@ function Select-ModelsToDownload {
     )
     $missing = @($Catalog | Where-Object { -not $_.downloaded })
     if ($missing.Count -eq 0) { return @() }
+
+    if ($PostInstall -and $DownloadModels -eq "eligible") {
+        $ids = @()
+        foreach ($meta in $Manifest.models) {
+            if (-not (Test-ModelEligible $meta $Gpu $Disks)) { continue }
+            if (@($missing.id) -contains $meta.id) { $ids += $meta.id }
+        }
+        if ($ids.Count -gt 0) {
+            Write-SetupLog "Auto-selected $($ids.Count) Hugging Face model(s) for this hardware."
+            return $ids
+        }
+        Write-SetupLog "No Hugging Face models fit this GPU/disk yet."
+        return @()
+    }
 
     if ($PostInstall -and ($DownloadModels -eq "default" -or -not $DownloadModels)) {
         foreach ($meta in $Manifest.models) {
@@ -615,6 +760,12 @@ function Download-ModelWithProgress([string]$EngineExe, [string]$DataDir, [strin
     Initialize-ProcessEnvironment $psi @{ AVE_DATA_DIR = $DataDir; AVE_LOG_LEVEL = "error" }
 
     $p = [System.Diagnostics.Process]::Start($psi)
+    $stderrJob = [System.Threading.Tasks.Task]::Run({
+        param($proc)
+        while (-not $proc.StandardError.EndOfStream) {
+            [void]$proc.StandardError.ReadLine()
+        }
+    }, $p)
     $done = [long]0
     $total = [long]1
     $sw = [System.Diagnostics.Stopwatch]::StartNew()
@@ -636,12 +787,202 @@ function Download-ModelWithProgress([string]$EngineExe, [string]$DataDir, [strin
         }
     }
     $p.WaitForExit()
+    [void]$stderrJob.Wait(5000)
     if ($p.ExitCode -ne 0) {
         $err = $p.StandardError.ReadToEnd()
         throw "model download failed ($ModelId): $err"
     }
     Write-Host ""
     Write-Host ("  -> model {0}: done" -f $DisplayName) -ForegroundColor Green
+}
+
+function Get-PhaseMeta($Manifest, [string]$Id) {
+    $total = 4
+    $index = 1
+    $title = $Id
+    if ($Manifest -and $Manifest.install_phases) {
+        $total = @($Manifest.install_phases).Count
+        $i = 1
+        foreach ($ph in $Manifest.install_phases) {
+            if ($ph.id -eq $Id) {
+                return @{ index = $i; total = $total; title = [string]$ph.title }
+            }
+            $i++
+        }
+    }
+    $titles = @{
+        platform = "Platform & runtime"
+        models   = "Hugging Face models"
+        engine   = "AI engine stack"
+        addons   = "GitHub addons"
+    }
+    $order = @("platform", "engine", "models", "addons")
+    $pos = [array]::IndexOf($order, $Id)
+    if ($pos -ge 0) { $index = $pos + 1 }
+    if ($titles.ContainsKey($Id)) { $title = $titles[$Id] }
+    return @{ index = $index; total = $total; title = $title }
+}
+
+function Install-EngineVerifyPhase {
+    param(
+        [string]$InstallDir,
+        [string]$DataDir,
+        $Manifest,
+        [switch]$FailSafe
+    )
+    $meta = Get-PhaseMeta $Manifest "engine"
+    Write-SetupPhase "engine" $meta.title "active" $meta.index $meta.total
+    Write-SetupLog "Verifying AI engine stack (PyTorch, diffusers, audio libs)..."
+
+    $engineExe = Get-EngineExe $InstallDir
+    # #region agent log
+    Write-AgentDebugLog -HypothesisId "H3" -Location "ave-setup.ps1:Install-EngineVerifyPhase" -Message "verify entry" -Data @{
+        failSafe = [bool]$FailSafe; engineExeExists = (Test-Path $engineExe)
+    }
+    # #endregion
+    if (-not (Test-Path $engineExe)) {
+        Write-SetupLog "Engine not installed yet - stack verify deferred."
+        Write-SetupPhase "engine" $meta.title "done" $meta.index $meta.total
+        return $false
+    }
+
+    try {
+        $r = Invoke-EngineCli $engineExe $DataDir @("verify") 120
+        $combined = (($r.StdOut + "`n" + $r.StdErr).Trim())
+
+        if ($r.ExitCode -ne 0 -and $combined -match 'unknown command') {
+            Write-SetupLog "Engine bundle predates verify command - skipped (non-blocking)."
+            Write-SetupPhase "engine" $meta.title "done" $meta.index $meta.total
+            return $false
+        }
+
+        if ($r.ExitCode -ne 0) {
+            $detail = if ($combined) { $combined.Substring(0, [Math]::Min(400, $combined.Length)) } else { "exit $($r.ExitCode)" }
+            if ($FailSafe) {
+                Write-SetupLog "Engine stack verify warning (non-blocking): $detail"
+                Write-SetupPhase "engine" $meta.title "done" $meta.index $meta.total
+                # #region agent log
+                Write-AgentDebugLog -HypothesisId "H4" -Location "ave-setup.ps1:Install-EngineVerifyPhase" -Message "verify fail-safe exit" -Data @{
+                    ok = $false; exitCode = $r.ExitCode; detail = $detail
+                }
+                # #endregion
+                return $false
+            }
+            Write-SetupPhase "engine" $meta.title "error" $meta.index $meta.total
+            throw "Engine stack verify failed: $detail"
+        }
+
+        try {
+            $json = $r.StdOut | ConvertFrom-Json
+            if ($json.ok -eq $false) {
+                $missing = @($json.packages | Where-Object { $_.error } | ForEach-Object { $_.name }) -join ", "
+                if ($FailSafe) {
+                    Write-SetupLog "Engine stack incomplete (non-blocking): $missing"
+                    Write-SetupPhase "engine" $meta.title "done" $meta.index $meta.total
+                    return $false
+                }
+                Write-SetupPhase "engine" $meta.title "error" $meta.index $meta.total
+                throw "Engine stack missing packages: $missing"
+            }
+            if ($json.packages) {
+                $names = @($json.packages | ForEach-Object { $_.name }) -join ", "
+                Write-SetupLog "Engine packages OK: $names"
+            } else {
+                Write-SetupLog "Engine stack verified."
+            }
+        } catch {
+            if ($_.Exception.Message -match '^Engine stack') { throw }
+            Write-SetupLog "Engine stack verified."
+        }
+
+        Write-SetupPhase "engine" $meta.title "done" $meta.index $meta.total
+        # #region agent log
+        Write-AgentDebugLog -HypothesisId "H3" -Location "ave-setup.ps1:Install-EngineVerifyPhase" -Message "verify success" -Data @{ ok = $true }
+        # #endregion
+        return $true
+    } catch {
+        if ($FailSafe) {
+            Write-SetupLog "Engine stack verify warning (non-blocking): $($_.Exception.Message)"
+            Write-SetupPhase "engine" $meta.title "done" $meta.index $meta.total
+            # #region agent log
+            Write-AgentDebugLog -HypothesisId "H4" -Location "ave-setup.ps1:Install-EngineVerifyPhase" -Message "verify fail-safe exit" -Data @{
+                ok = $false; error = $_.Exception.Message
+            }
+            # #endregion
+            return $false
+        }
+        Write-SetupPhase "engine" $meta.title "error" $meta.index $meta.total
+        throw
+    }
+}
+
+function Test-AddonInstalled([string]$InstallDir, $Addon) {
+    $dest = Join-Path $InstallDir ($Addon.folder -replace '/', '\')
+    if (-not (Test-Path (Join-Path $dest "inference.py"))) { return $false }
+    if ($Addon.checkpoint -and $Addon.checkpoint.dest) {
+        $ckpt = Join-Path $dest ($Addon.checkpoint.dest -replace '/', '\')
+        if (-not (Test-Path $ckpt)) { return $false }
+    }
+    return $true
+}
+
+function Install-AddonsPhase([string]$InstallDir, $Manifest, [switch]$DoInstall) {
+    $meta = Get-PhaseMeta $Manifest "addons"
+    Write-SetupPhase "addons" $meta.title "active" $meta.index $meta.total
+    $paths = @{}
+    if (-not $DoInstall -or -not $Manifest -or -not $Manifest.optional_addons) {
+        Write-SetupLog "GitHub addons: nothing to install."
+        Write-SetupPhase "addons" $meta.title "done" $meta.index $meta.total
+        return $paths
+    }
+    $cache = Join-Path $env:TEMP "ave-setup-cache"
+    New-Item -ItemType Directory -Force -Path $cache | Out-Null
+    foreach ($addon in $Manifest.optional_addons) {
+        $dest = Join-Path $InstallDir ($addon.folder -replace '/', '\')
+        if (Test-AddonInstalled $InstallDir $addon) {
+            Write-SetupLog "$($addon.name) already installed."
+            $paths[$addon.id] = $dest
+            continue
+        }
+        if (-not $addon.github_zip) {
+            Write-SetupLog "$($addon.name): no download URL - skipped."
+            continue
+        }
+        Write-SetupLog "Downloading $($addon.name) from GitHub..."
+        $zipPath = Join-Path $cache ("addon-" + $addon.id + ".zip")
+        $approx = [long]($addon.approx_size_gb * 1GB)
+        Download-FileWithProgress -Url $addon.github_zip -Destination $zipPath -Label ("addon-" + $addon.id) -ApproxTotal $approx
+        $temp = Join-Path $env:TEMP ("ave-addon-" + [guid]::NewGuid().ToString("N"))
+        New-Item -ItemType Directory -Force -Path $temp | Out-Null
+        try {
+            Expand-Archive -Path $zipPath -DestinationPath $temp -Force
+            $innerName = if ($addon.zip_strip_prefix) { $addon.zip_strip_prefix } else { "" }
+            $inner = if ($innerName) { Join-Path $temp $innerName } else { $temp }
+            if (-not (Test-Path $inner)) { throw "GitHub archive missing expected folder: $innerName" }
+            if (Test-Path $dest) { Remove-Item -Recurse -Force $dest }
+            $parent = Split-Path $dest -Parent
+            if (-not (Test-Path $parent)) { New-Item -ItemType Directory -Force -Path $parent | Out-Null }
+            Move-Item -Force $inner $dest
+        } finally {
+            if (Test-Path $temp) { Remove-Item -Recurse -Force $temp -ErrorAction SilentlyContinue }
+            if (Test-Path $zipPath) { Remove-Item -Force $zipPath -ErrorAction SilentlyContinue }
+        }
+        if ($addon.checkpoint -and $addon.checkpoint.url -and $addon.checkpoint.dest) {
+            $ckptDest = Join-Path $dest ($addon.checkpoint.dest -replace '/', '\')
+            $ckptParent = Split-Path $ckptDest -Parent
+            if (-not (Test-Path $ckptParent)) { New-Item -ItemType Directory -Force -Path $ckptParent | Out-Null }
+            $ckptBytes = if ($addon.checkpoint.approx_bytes) { [long]$addon.checkpoint.approx_bytes } else { 400MB }
+            Write-SetupLog "Downloading $($addon.name) checkpoint..."
+            Download-FileWithProgress -Url $addon.checkpoint.url -Destination $ckptDest -Label ("addon-ckpt-" + $addon.id) -ApproxTotal $ckptBytes
+        }
+        if (-not (Test-AddonInstalled $InstallDir $addon)) {
+            throw "$($addon.name) install incomplete"
+        }
+        Write-SetupLog "$($addon.name) installed."
+        $paths[$addon.id] = $dest
+    }
+    Write-SetupPhase "addons" $meta.title "done" $meta.index $meta.total
+    return $paths
 }
 
 function Install-ModelsPhase([string]$InstallDir, [string]$DataDir, $Manifest, $Gpu, [array]$Disks, [string]$DownloadModels, [switch]$PostInstall, [switch]$Quiet, [switch]$SkipModels) {
@@ -658,6 +999,7 @@ function Install-ModelsPhase([string]$InstallDir, [string]$DataDir, $Manifest, $
     }
 
     Write-Host "[4/4] AI models..." -ForegroundColor Yellow
+    Write-SetupLog "Downloading Hugging Face models into install folder..."
     $catalog = Get-EngineModelStatus $engineExe $DataDir
     if ($catalog.Count -eq 0) {
         Write-Host "  Could not read model catalog from engine." -ForegroundColor Red
@@ -670,6 +1012,11 @@ function Install-ModelsPhase([string]$InstallDir, [string]$DataDir, $Manifest, $
     }
 
     $toGet = Select-ModelsToDownload -Catalog $catalog -Manifest $manifest -Gpu $Gpu -Disks $Disks -DownloadModels $DownloadModels -PostInstall:$PostInstall -Quiet:$Quiet
+    # #region agent log
+    Write-AgentDebugLog -HypothesisId "C" -Location "ave-setup.ps1:Install-ModelsPhase" -Message "models selected" -Data @{
+        catalogCount = $catalog.Count; toGet = @($toGet)
+    }
+    # #endregion
     if ($toGet.Count -eq 0) {
         Write-Host "  No models selected for download." -ForegroundColor DarkGray
         return $true
@@ -683,6 +1030,9 @@ function Install-ModelsPhase([string]$InstallDir, [string]$DataDir, $Manifest, $
     foreach ($modelId in $toGet) {
         $meta = @($catalog | Where-Object { $_.id -eq $modelId } | Select-Object -First 1)
         $name = if ($meta) { $meta.name } else { $modelId }
+        # #region agent log
+        Write-AgentDebugLog -HypothesisId "C" -Location "ave-setup.ps1:Install-ModelsPhase" -Message "model download starting" -Data @{ modelId = $modelId; name = $name }
+        # #endregion
         Download-ModelWithProgress $engineExe $DataDir $modelId $name
     }
     return $true
@@ -788,13 +1138,31 @@ if ($blocked) {
     }
 }
 
+$failSafeVerify = $true
+$engineVerified = $false
+$engineOkPreflight = Test-EngineInstalled $installDir
+
+# Phase 2 preflight: if engine already exists, verify BEFORE platform work (fail-safe, non-blocking).
+if ($engineOkPreflight) {
+    Write-SetupLog "Preflight: AI engine stack check before platform install (fail-safe)..."
+    # #region agent log
+    Write-AgentDebugLog -HypothesisId "H1" -Location "ave-setup.ps1:preflight" -Message "engine verify before platform" -Data @{
+        engineOkPreflight = $true; failSafe = $failSafeVerify
+    }
+    # #endregion
+    $engineVerified = Install-EngineVerifyPhase $installDir $dataDir $manifest -FailSafe:$failSafeVerify
+}
+
 if ($plan.Count -gt 0) {
     if (-not $Quiet -and -not $PostInstall -and -not $script:EmitJson) {
         Write-Host "Press Enter to start installation (Ctrl+C to cancel)..."
         [void][System.Console]::ReadLine()
     }
 
-    Write-Host "[3/4] Installing components..." -ForegroundColor Yellow
+    $platformMeta = Get-PhaseMeta $manifest "platform"
+    Write-SetupPhase "platform" $platformMeta.title "active" $platformMeta.index $platformMeta.total
+    Write-SetupLog "Phase 1: Platform & runtime (engine, WebView2, data folder, tools)..."
+
     foreach ($item in $plan) {
         switch ($item.action) {
             "copy" {
@@ -810,6 +1178,11 @@ if ($plan.Count -gt 0) {
                 $archivePath = Join-Path $cache ("engine-" + [guid]::NewGuid().ToString("N") + "." + $item.archive)
                 try {
                     Download-FileWithProgress -Url $item.src -Destination $archivePath -Label $item.id -ApproxTotal $item.bytes
+                    # #region agent log
+                    Write-AgentDebugLog -HypothesisId "B" -Location "ave-setup.ps1:install" -Message "engine download complete" -Data @{
+                        archivePath = $archivePath; bytes = (Get-Item $archivePath).Length
+                    }
+                    # #endregion
                     if ($item.sha256) {
                         $hash = (Get-FileHash $archivePath -Algorithm SHA256).Hash.ToLower()
                         if ($hash -ne $item.sha256) {
@@ -829,16 +1202,19 @@ if ($plan.Count -gt 0) {
                 New-Item -ItemType Directory -Force -Path $item.dst | Out-Null
                 $readme = Join-Path $item.dst "README.txt"
                 @"
-AI Video Tool data folder.
-Models download here on first use from the Models tab.
+AI Video Tool data folder (models, outputs, cache).
+Everything for this install lives under the application folder.
 Set AVE_DATA_DIR=$($item.dst) to override.
 "@ | Set-Content -Path $readme -Encoding UTF8
                 Write-Host "  -> $($item.id): created $($item.dst)" -ForegroundColor Green
             }
         }
     }
+    Write-SetupPhase "platform" $platformMeta.title "done" $platformMeta.index $platformMeta.total
 } else {
     Write-Host "[3/4] Components already installed - skipping." -ForegroundColor DarkGray
+    $platformMeta = Get-PhaseMeta $manifest "platform"
+    Write-SetupPhase "platform" $platformMeta.title "done" $platformMeta.index $platformMeta.total
 }
 
 if (-not (Test-Path $dataDir)) {
@@ -847,17 +1223,46 @@ if (-not (Test-Path $dataDir)) {
 
 $engineOk = Test-EngineInstalled $installDir
 $fail = $false
+$addonPaths = @{}
+$doAddons = ($InstallAddons -or ($PostInstall -and -not $SkipAddons))
 
-if ($engineOk -and $manifest) {
+# Phase 2 post-platform: verify newly installed engine before large model downloads.
+if ($engineOk -and -not $engineVerified) {
+    Write-SetupLog "Post-platform: AI engine stack check before model downloads (fail-safe)..."
+    # #region agent log
+    Write-AgentDebugLog -HypothesisId "H2" -Location "ave-setup.ps1:post-platform" -Message "engine verify before models" -Data @{
+        engineOk = $true; failSafe = $failSafeVerify
+    }
+    # #endregion
+    $engineVerified = Install-EngineVerifyPhase $installDir $dataDir $manifest -FailSafe:$failSafeVerify
+}
+
+if ($engineOk -and $manifest -and -not $SkipModels) {
+    $modelsMeta = Get-PhaseMeta $manifest "models"
+    Write-SetupPhase "models" $modelsMeta.title "active" $modelsMeta.index $modelsMeta.total
+    Write-SetupLog "Phase 3: Hugging Face models..."
     try {
         $null = Install-ModelsPhase $installDir $dataDir $manifest $gpu $disks $DownloadModels -PostInstall:$PostInstall -Quiet:$Quiet -SkipModels:$SkipModels
+        Write-SetupPhase "models" $modelsMeta.title "done" $modelsMeta.index $modelsMeta.total
     } catch {
         Write-Host "  Model download failed: $_" -ForegroundColor Red
+        Write-SetupLog "Model download failed: $_"
+        Write-SetupPhase "models" $modelsMeta.title "error" $modelsMeta.index $modelsMeta.total
         Write-Host "  Open the Models tab after launch to retry." -ForegroundColor Yellow
         if (-not $PostInstall) { $fail = $true }
     }
 } elseif (-not $SkipModels) {
     Write-Host "[4/4] Models skipped - install engine first." -ForegroundColor DarkYellow
+    $modelsMeta = Get-PhaseMeta $manifest "models"
+    Write-SetupPhase "models" $modelsMeta.title "done" $modelsMeta.index $modelsMeta.total
+}
+
+try {
+    $addonPaths = Install-AddonsPhase $installDir $manifest -DoInstall:$doAddons
+} catch {
+    Write-Host "  Addon install failed: $_" -ForegroundColor Red
+    Write-SetupLog "Addon install failed: $_"
+    if (-not $PostInstall) { $fail = $true }
 }
 
 Write-InstallState $installDir @{
@@ -865,6 +1270,7 @@ Write-InstallState $installDir @{
     data_dir = $dataDir
     webview2 = $webview2
     gpu = $gpu
+    addons = $addonPaths
 }
 
 Write-Host ""

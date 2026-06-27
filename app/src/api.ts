@@ -31,6 +31,22 @@ export interface SetupScanModel {
   auto_download: boolean;
 }
 
+export interface SetupScanAddon {
+  id: string;
+  name: string;
+  bytes: number;
+  eta_minutes: number;
+  auto_install: boolean;
+}
+
+export interface SetupScanPhase {
+  id: string;
+  title: string;
+  description?: string;
+  index: number;
+  total: number;
+}
+
 export interface SetupScan {
   hardware: {
     gpu_present: boolean;
@@ -43,6 +59,8 @@ export interface SetupScan {
   engine_installed: boolean;
   items: SetupScanItem[];
   models: SetupScanModel[];
+  addons?: SetupScanAddon[];
+  phases?: SetupScanPhase[];
   total_bytes: number;
   eta_minutes: number;
   can_run: boolean;
@@ -57,6 +75,14 @@ export interface SetupProgress {
   total_bytes: number;
   eta_seconds: number;
   message: string;
+}
+
+export interface SetupStep {
+  id: string;
+  title: string;
+  state: string;
+  index: number;
+  total: number;
 }
 
 export interface RecommendedDefaults {
@@ -191,6 +217,12 @@ export interface MusicVideoRequest {
   use_clip_plan?: boolean;
   min_clip_sec?: number;
   max_clip_sec?: number;
+  max_clips?: number;
+  range_start?: number;
+  range_end?: number;
+  duration_mode?: "full" | "highlight";
+  separate_vocals?: boolean;
+  director_craft?: Record<string, string>;
 }
 
 export interface CanvasRequest {
@@ -233,12 +265,24 @@ export const api = {
     invoke<ModelStatus>("delete_model", { modelId: model_id }),
   generate: (request: GenerationRequest) =>
     invoke<{ job_id: string }>("generate", { request }),
-  analyzeAudio: (audio_b64: string, opts?: { min_clip_sec?: number; max_clip_sec?: number }) =>
+  analyzeAudio: (
+    audio_b64: string,
+    opts?: {
+      min_clip_sec?: number;
+      max_clip_sec?: number;
+      range_start?: number;
+      range_end?: number;
+      max_clips?: number;
+    },
+  ) =>
     invoke<AudioAnalysis>("analyze_audio", {
       request: {
         audio_b64,
         min_clip_sec: opts?.min_clip_sec ?? 4,
         max_clip_sec: opts?.max_clip_sec ?? 8,
+        range_start: opts?.range_start ?? 0,
+        range_end: opts?.range_end ?? -1,
+        max_clips: opts?.max_clips ?? 8,
       },
     }),
   createMusicVideo: (request: MusicVideoRequest) =>

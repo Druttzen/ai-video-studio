@@ -1,5 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, GenerationRequest, Health, JobStatus, ModelStatus } from "../api";
+import {
+  DirectorCraftSettings,
+  enrichBriefWithCraft,
+  loadDirectorCraft,
+} from "../lib/director-craft";
+import { DirectorCatalog, loadDirectorCatalog } from "../lib/director-catalog";
+import DirectorCraft from "./DirectorCraft";
 import InspireBar from "./InspireBar";
 import { JobPanel } from "./shared";
 
@@ -51,6 +58,12 @@ export default function Generate({ models, jobs, health, onError }: Props) {
   const [image, setImage] = useState<string | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [craft, setCraft] = useState<DirectorCraftSettings>(loadDirectorCraft);
+  const [catalog, setCatalog] = useState<DirectorCatalog | null>(null);
+
+  useEffect(() => {
+    loadDirectorCatalog().then(setCatalog).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!req.model_id && ready.length) selectModel(ready[0]);
@@ -111,8 +124,13 @@ export default function Generate({ models, jobs, health, onError }: Props) {
     }
     setSubmitting(true);
     try {
+      let prompt = req.prompt;
+      if (catalog) {
+        prompt = enrichBriefWithCraft(req.prompt, catalog, craft);
+      }
       const { job_id } = await api.generate({
         ...req,
+        prompt,
         image_b64: req.task === "image-to-video" ? image : null,
       });
       setJobId(job_id);
@@ -159,6 +177,7 @@ export default function Generate({ models, jobs, health, onError }: Props) {
               }))
             }
           />
+          <DirectorCraft onChange={setCraft} />
           <div className="generate-layout">
           <div className="card">
             <div className="field">

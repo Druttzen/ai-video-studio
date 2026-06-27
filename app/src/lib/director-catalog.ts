@@ -20,6 +20,12 @@ export interface DirectorCatalog {
   version: string;
   sceneTemplates: Record<string, SceneTemplate>;
   styleProfiles: StyleProfile[];
+  shotTypes?: Record<string, string>;
+  lightingSetups?: Record<string, string>;
+  colorPipelines?: Record<string, string>;
+  cameraPresets?: string[];
+  lensKits?: string[];
+  filmFormats?: string[];
   randomInspiration: {
     topics: string[];
     envs: string[];

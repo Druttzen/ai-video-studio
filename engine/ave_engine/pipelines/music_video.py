@@ -18,11 +18,28 @@ from pathlib import Path
 from ..analysis.audio import analyze_audio
 from ..analysis.image import analyze_image
 from ..analysis.prompt import build_prompt_plan
+from ..analysis.segment_prompt import (
+    DEFAULT_PRODUCTION_MAX_CLIPS,
+    build_clip_segment_prompt,
+    resolve_production_clip_plan,
+)
+from ..analysis.separate import separate_vocals
 from ..compose.assemble import assemble_music_video
 from ..pipeline.export import export_mp4
 from ..schemas import GenerationRequest
 from .runner import JobContext, register
 from .single import generate_clip
+
+
+def _resolve_range(payload: dict, duration: float) -> tuple[float, float]:
+    mode = str(payload.get("duration_mode", "full")).lower()
+    rs = float(payload.get("range_start", 0.0))
+    re = float(payload.get("range_end", -1.0))
+    if mode == "highlight" and re > rs:
+        return rs, min(re, duration)
+    if re > 0:
+        return rs, min(re, duration)
+    return rs, duration
 
 
 @register("music-video")
@@ -39,27 +56,35 @@ def run_music_video(payload: dict, ctx: JobContext) -> str:
     length_sync = bool(payload.get("length_sync", True))
     use_clip_plan = bool(payload.get("use_clip_plan", True))
     task = payload.get("task", "text-to-video")
+    max_clips = int(payload.get("max_clips", 0)) or DEFAULT_PRODUCTION_MAX_CLIPS
+    director_craft = payload.get("director_craft") or {}
 
-    # 1. analyze music
+    # 1. analyze music (optionally limited to highlight range)
     ctx.progress(0.01, "analyzing music")
+    probe = analyze_audio(str(audio_path))
+    range_start, range_end = _resolve_range(payload, probe.duration)
     audio = analyze_audio(
         str(audio_path),
         beats_per_bar=int(payload.get("beats_per_bar", 4)),
-        range_start=float(payload.get("range_start", 0.0)),
-        range_end=float(payload.get("range_end", -1.0)),
+        range_start=range_start,
+        range_end=range_end,
         min_clip_sec=float(payload.get("min_clip_sec", 4.0)),
         max_clip_sec=float(payload.get("max_clip_sec", 8.0)),
-        max_clips=int(payload.get("max_clips", 0)),
+        max_clips=max_clips,
     )
-    clip_info = f", {audio.clip_count} clip segments" if audio.clip_plan else ""
+    clip_plan = resolve_production_clip_plan(
+        [c.as_dict() for c in audio.clip_plan],
+        max_clips=max_clips,
+    )
+    clip_info = f", {len(clip_plan)} clip segments" if clip_plan else ""
     ctx.job.message = f"tempo {audio.tempo:.0f} BPM, {len(audio.beats)} beats{clip_info}"
     if audio.vocals_likely and not payload.get("lip_sync"):
         ctx.job.message += " (vocals detected)"
 
-    # Derive scene count from clip plan when not explicitly overridden.
-    if payload.get("use_clip_plan", True) and audio.clip_plan:
+    # Derive scene count from capped clip plan when not explicitly overridden.
+    if use_clip_plan and clip_plan:
         cap = int(payload.get("n_scenes", 0)) or 0
-        suggested = min(12, max(2, audio.clip_count))
+        suggested = min(12, max(2, len(clip_plan)))
         n_scenes = cap if cap > 0 else suggested
     else:
         n_scenes = int(payload.get("n_scenes", 4))
@@ -69,13 +94,24 @@ def run_music_video(payload: dict, ctx: JobContext) -> str:
     img_path = payload.get("image_path")
     if img_path:
         image_analysis = analyze_image(img_path)
-    plan = build_prompt_plan(payload.get("brief", ""), n_scenes, audio, image_analysis)
+    plan = build_prompt_plan(
+        payload.get("brief", ""),
+        n_scenes,
+        audio,
+        image_analysis,
+        director_craft=director_craft,
+    )
 
-    # 3. generate one clip per scene
+    # 3. generate one clip per scene (with per-segment headers when clip plan exists)
     scene_clips: list[Path] = []
     gen_lo, gen_hi = 0.05, 0.75
     span = (gen_hi - gen_lo) / max(1, len(plan.scenes))
     for i, scene_prompt in enumerate(plan.scenes):
+        if clip_plan:
+            clip = clip_plan[i % len(clip_plan)]
+            scene_prompt = build_clip_segment_prompt(
+                scene_prompt, clip, i % len(clip_plan), len(clip_plan)
+            )
         s_lo = gen_lo + i * span
         s_hi = s_lo + span
         req = GenerationRequest(
@@ -95,9 +131,9 @@ def run_music_video(payload: dict, ctx: JobContext) -> str:
         )
         ctx.job.message = f"scene {i + 1}/{len(plan.scenes)}: {scene_prompt[:40]}"
         frames = generate_clip(req, ctx, lo=s_lo, hi=s_hi)
-        clip = work / f"scene_{i:02d}.mp4"
-        export_mp4(frames, clip, fps=fps)
-        scene_clips.append(clip)
+        scene_file = work / f"scene_{i:02d}.mp4"
+        export_mp4(frames, scene_file, fps=fps)
+        scene_clips.append(scene_file)
 
     # 4. beat-synced assembly + audio mux
     ctx.progress(0.78, "cutting to the beat")
@@ -115,16 +151,23 @@ def run_music_video(payload: dict, ctx: JobContext) -> str:
         on_progress=lambda f: ctx.progress(0.78 + 0.17 * f, "cutting to the beat"),
     )
 
-    # 5. optional lip sync
+    # 5. optional lip sync (Demucs vocals stem when requested)
     if payload.get("lip_sync") and (payload.get("face_path") or payload.get("face_b64")):
         ctx.progress(0.96, "lip syncing")
         try:
             from ..models.wav2lip import lip_sync
 
+            lip_audio = str(audio_path)
+            if payload.get("separate_vocals"):
+                ctx.job.message = "separating vocals (Demucs)…"
+                vocals = separate_vocals(str(audio_path), work / "stems")
+                if vocals is not None:
+                    lip_audio = str(vocals)
+                    ctx.job.message = "lip syncing with isolated vocals"
             synced = out_dir / f"{ctx.job.job_id}_lip.mp4"
             lip_sync(
                 face=payload.get("face_path"),
-                audio=str(audio_path),
+                audio=lip_audio,
                 out=str(synced),
             )
             out = synced
@@ -133,8 +176,12 @@ def run_music_video(payload: dict, ctx: JobContext) -> str:
 
     # cleanup intermediates
     for f in work.glob("*"):
-        f.unlink(missing_ok=True)
-    work.rmdir()
+        if f.is_file():
+            f.unlink(missing_ok=True)
+    try:
+        work.rmdir()
+    except OSError:
+        pass
 
     ctx.progress(1.0, "complete")
     return str(out)

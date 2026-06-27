@@ -1,6 +1,6 @@
 //! In-app setup: hardware scan, component install, progress events to the UI.
 
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -11,6 +11,50 @@ use tauri::{AppHandle, Emitter, Manager};
 use crate::engine::EngineState;
 
 static SETUP_RUNNING: AtomicBool = AtomicBool::new(false);
+
+// #region agent log
+pub(crate) fn agent_debug_log(hypothesis_id: &str, location: &str, message: &str, data: serde_json::Value) {
+    let entry = serde_json::json!({
+        "sessionId": "d02589",
+        "hypothesisId": hypothesis_id,
+        "location": location,
+        "message": message,
+        "data": data,
+        "timestamp": std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0),
+        "runId": "pre-fix"
+    });
+    let line = format!("{entry}\n");
+    let mut paths: Vec<PathBuf> = Vec::new();
+    if let Ok(local) = std::env::var("LOCALAPPDATA") {
+        paths.push(
+            PathBuf::from(local)
+                .join("AI Video Tool")
+                .join("debug-d02589.log"),
+        );
+    }
+    paths.push(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join("debug-d02589.log"),
+    );
+    for path in paths {
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+        {
+            let _ = file.write_all(line.as_bytes());
+        }
+    }
+}
+// #endregion
 
 #[derive(Debug, Clone, Serialize)]
 pub struct UpdateInfo {
@@ -37,6 +81,15 @@ pub struct SetupProgress {
     pub total_bytes: i64,
     pub eta_seconds: f64,
     pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SetupStep {
+    pub id: String,
+    pub title: String,
+    pub state: String,
+    pub index: u32,
+    pub total: u32,
 }
 
 pub fn resolve_install_dir(app: &AppHandle) -> Result<PathBuf, String> {
@@ -81,6 +134,16 @@ fn install_dir(app: &AppHandle) -> Result<PathBuf, String> {
     resolve_install_dir(app)
 }
 
+#[cfg(windows)]
+fn hide_console(cmd: &mut Command) {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    cmd.creation_flags(CREATE_NO_WINDOW);
+}
+
+#[cfg(not(windows))]
+fn hide_console(_cmd: &mut Command) {}
+
 fn run_powershell_json(script: &PathBuf, args: &[&str]) -> Result<String, String> {
     let mut cmd = Command::new("powershell");
     cmd.args([
@@ -93,6 +156,7 @@ fn run_powershell_json(script: &PathBuf, args: &[&str]) -> Result<String, String
     cmd.args(args);
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
+    hide_console(&mut cmd);
 
     let output = cmd.output().map_err(|e| e.to_string())?;
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -188,7 +252,7 @@ fn version_gt(latest: &str, current: &str) -> bool {
 }
 
 pub async fn bootstrap(app: AppHandle) -> Result<AppBootstrap, String> {
-    let update = check_update(&app).await.unwrap_or_else(|e| UpdateInfo {
+    let update = check_update(&app).await.unwrap_or_else(|_e| UpdateInfo {
         available: false,
         current_version: app.package_info().version.to_string(),
         latest_version: app.package_info().version.to_string(),
@@ -214,7 +278,7 @@ pub fn setup_scan(app: &AppHandle) -> Result<serde_json::Value, String> {
             "-InstDir",
             &dir.to_string_lossy(),
             "-DownloadModels",
-            "default",
+            "eligible",
         ],
     )?;
     serde_json::from_str(&json).map_err(|e| format!("invalid setup scan JSON: {e}"))
@@ -235,6 +299,19 @@ pub async fn setup_run(app: AppHandle) -> Result<(), String> {
 
     tokio::task::spawn_blocking(move || {
         let result = (|| -> Result<(), String> {
+            // #region agent log
+            agent_debug_log(
+                "A",
+                "setup.rs:setup_run",
+                "setup_run starting",
+                serde_json::json!({
+                    "script": script.to_string_lossy(),
+                    "installDir": dir.to_string_lossy(),
+                    "createNoWindow": true
+                }),
+            );
+            // #endregion
+
             let mut cmd = Command::new("powershell");
             cmd.args([
                 "-NoProfile",
@@ -249,19 +326,79 @@ pub async fn setup_run(app: AppHandle) -> Result<(), String> {
                 "-InstDir",
                 &dir.to_string_lossy(),
                 "-DownloadModels",
-                "default",
+                "eligible",
+                "-InstallAddons",
             ]);
             cmd.stdout(Stdio::piped());
             cmd.stderr(Stdio::piped());
+            hide_console(&mut cmd);
 
             let mut child = cmd.spawn().map_err(|e| e.to_string())?;
+
+            // #region agent log
+            agent_debug_log(
+                "A",
+                "setup.rs:setup_run",
+                "powershell child spawned",
+                serde_json::json!({ "pid": child.id() }),
+            );
+            // #endregion
+
+            let stderr = child.stderr.take();
+            if let Some(stderr) = stderr {
+                std::thread::spawn(move || {
+                    let reader = BufReader::new(stderr);
+                    let mut stderr_lines = 0u32;
+                    for line in reader.lines().map_while(Result::ok) {
+                        stderr_lines += 1;
+                        // #region agent log
+                        agent_debug_log(
+                            "D",
+                            "setup.rs:stderr",
+                            "powershell stderr line",
+                            serde_json::json!({
+                                "lineNum": stderr_lines,
+                                "preview": line.chars().take(200).collect::<String>()
+                            }),
+                        );
+                        // #endregion
+                    }
+                    // #region agent log
+                    agent_debug_log(
+                        "D",
+                        "setup.rs:stderr",
+                        "stderr reader finished",
+                        serde_json::json!({ "totalLines": stderr_lines }),
+                    );
+                    // #endregion
+                });
+            }
+
             let stdout = child.stdout.take().ok_or("no stdout")?;
             let reader = BufReader::new(stdout);
+            let mut progress_events = 0u32;
+            let mut last_label = String::new();
 
             for line in reader.lines().map_while(Result::ok) {
                 if let Some(rest) = line.strip_prefix("AVE_SETUP_PROGRESS|") {
                     let parts: Vec<&str> = rest.split('|').collect();
                     if parts.len() >= 5 {
+                        progress_events += 1;
+                        last_label = parts[0].to_string();
+                        // #region agent log
+                        agent_debug_log(
+                            "B",
+                            "setup.rs:stdout",
+                            "setup progress",
+                            serde_json::json!({
+                                "eventNum": progress_events,
+                                "label": parts[0],
+                                "percent": parts[1],
+                                "doneBytes": parts[2],
+                                "totalBytes": parts[3]
+                            }),
+                        );
+                        // #endregion
                         let payload = SetupProgress {
                             phase: "install".into(),
                             label: parts[0].to_string(),
@@ -273,7 +410,27 @@ pub async fn setup_run(app: AppHandle) -> Result<(), String> {
                         };
                         let _ = window.emit("setup-progress", &payload);
                     }
+                } else if let Some(rest) = line.strip_prefix("AVE_SETUP_PHASE|") {
+                    let parts: Vec<&str> = rest.split('|').collect();
+                    if parts.len() >= 5 {
+                        let payload = SetupStep {
+                            id: parts[0].to_string(),
+                            title: parts[1].to_string(),
+                            state: parts[2].to_string(),
+                            index: parts[3].parse().unwrap_or(1),
+                            total: parts[4].parse().unwrap_or(4),
+                        };
+                        let _ = window.emit("setup-step", &payload);
+                    }
                 } else if let Some(msg) = line.strip_prefix("AVE_SETUP_LOG|") {
+                    // #region agent log
+                    agent_debug_log(
+                        "C",
+                        "setup.rs:stdout",
+                        "setup log line",
+                        serde_json::json!({ "message": msg }),
+                    );
+                    // #endregion
                     let payload = SetupProgress {
                         phase: "log".into(),
                         label: "setup".into(),
@@ -287,7 +444,30 @@ pub async fn setup_run(app: AppHandle) -> Result<(), String> {
                 }
             }
 
+            // #region agent log
+            agent_debug_log(
+                "E",
+                "setup.rs:setup_run",
+                "stdout exhausted, waiting for child",
+                serde_json::json!({
+                    "progressEvents": progress_events,
+                    "lastLabel": last_label
+                }),
+            );
+            // #endregion
+
             let status = child.wait().map_err(|e| e.to_string())?;
+            // #region agent log
+            agent_debug_log(
+                "E",
+                "setup.rs:setup_run",
+                "child exited",
+                serde_json::json!({
+                    "exitCode": status.code(),
+                    "success": status.success()
+                }),
+            );
+            // #endregion
             if !status.success() {
                 return Err(format!(
                     "setup exited with code {}",

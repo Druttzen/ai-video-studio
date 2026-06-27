@@ -932,3 +932,43 @@ select:focus {
   justify-content: flex-end;
 }
 
+.setup-phase-stepper {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-dim);
+}
+
+.setup-phase-step {
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.setup-phase-step--active {
+  color: var(--text);
+}
+
+.setup-phase-step--done {
+  color: var(--good);
+}
+
+.setup-phase-step--error {
+  color: var(--bad);
+}
+
+.setup-phase-step-num {
+  font-weight: 700;
+  opacity: 0.85;
+}
+
+.setup-phase-step-state {
+  text-transform: capitalize;
+  font-size: 11px;
+  opacity: 0.8;
+}
+

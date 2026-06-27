@@ -20,6 +20,7 @@ export default function OnboardingWizard({
 }: Props) {
   const [step, setStep] = useState<Step>("welcome");
   const [downloading, setDownloading] = useState(false);
+  const [finishing, setFinishing] = useState(false);
 
   const ltx = models.find((m) => m.id === "ltx-video") ?? models[0];
   const hasModel = health.onboarding?.has_model || models.some((m) => m.downloaded);
@@ -42,11 +43,59 @@ export default function OnboardingWizard({
   }
 
   async function finish() {
+    if (finishing) return;
+    setFinishing(true);
+    // #region agent log
+    fetch("http://127.0.0.1:7749/ingest/f9f520f5-e88c-4cbf-af23-d092d1cdeec3", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "d02589" },
+      body: JSON.stringify({
+        sessionId: "d02589",
+        hypothesisId: "C",
+        location: "OnboardingWizard.tsx:finish",
+        message: "Get started clicked",
+        data: { hasModel },
+        timestamp: Date.now(),
+        runId: "post-fix",
+      }),
+    }).catch(() => {});
+    // #endregion
     try {
       await api.completeOnboarding();
+      // #region agent log
+      fetch("http://127.0.0.1:7749/ingest/f9f520f5-e88c-4cbf-af23-d092d1cdeec3", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "d02589" },
+        body: JSON.stringify({
+          sessionId: "d02589",
+          hypothesisId: "A",
+          location: "OnboardingWizard.tsx:finish",
+          message: "completeOnboarding resolved",
+          data: {},
+          timestamp: Date.now(),
+          runId: "post-fix",
+        }),
+      }).catch(() => {});
+      // #endregion
       onDone();
     } catch (e) {
+      // #region agent log
+      fetch("http://127.0.0.1:7749/ingest/f9f520f5-e88c-4cbf-af23-d092d1cdeec3", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "d02589" },
+        body: JSON.stringify({
+          sessionId: "d02589",
+          hypothesisId: "B",
+          location: "OnboardingWizard.tsx:finish",
+          message: "completeOnboarding failed",
+          data: { error: String(e) },
+          timestamp: Date.now(),
+          runId: "post-fix",
+        }),
+      }).catch(() => {});
+      // #endregion
       onError(e);
+      setFinishing(false);
     }
   }
 
@@ -65,9 +114,9 @@ export default function OnboardingWizard({
           {step === "welcome" && (
             <>
               <p>
-                This app runs <b>on your GPU</b>, saves videos under{" "}
-                <code className="mono">{health.settings.data_dir}</code>, and works without{" "}
-                <code className="mono">ai-video-tool</code>.
+                This app runs <b>on your GPU</b>. Models, videos, and cache are stored in{" "}
+                <code className="mono">{health.settings.data_dir}</code> — inside your install
+                folder, not AppData.
               </p>
               <ul className="onboarding-list">
                 <li>Generate text→video and image→video clips</li>
@@ -187,8 +236,8 @@ export default function OnboardingWizard({
                 Finished videos appear in <b>Library</b> and stay there after you restart the app.
               </p>
               <div className="onboarding-actions">
-                <button type="button" className="primary" onClick={finish}>
-                  Get started
+                <button type="button" className="primary" onClick={finish} disabled={finishing}>
+                  {finishing ? "Finishing…" : "Get started"}
                 </button>
               </div>
             </>

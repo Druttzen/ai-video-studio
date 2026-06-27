@@ -49,14 +49,22 @@ function Get-ScriptRoot {
 }
 
 function Resolve-InstallDir([string]$Explicit) {
-    if ($Explicit) { return (Resolve-Path $Explicit).Path }
+    if ($Explicit) {
+        try {
+            if (Test-Path -LiteralPath $Explicit) {
+                return (Resolve-Path -LiteralPath $Explicit).Path
+            }
+        } catch {}
+        return [System.IO.Path]::GetFullPath($Explicit)
+    }
     foreach ($cand in @(
         (Join-Path (Get-Location) "ai-video-tool.exe"),
+        (Join-Path $env:LOCALAPPDATA "Programs\AI Video Tool\ai-video-tool.exe"),
         (Join-Path $env:LOCALAPPDATA "AI Video Tool\ai-video-tool.exe"),
         (Join-Path $env:ProgramFiles "AI Video Tool\ai-video-tool.exe"),
         (Join-Path ${env:ProgramFiles(x86)} "AI Video Tool\ai-video-tool.exe")
     )) {
-        if (Test-Path $cand) { return (Split-Path $cand -Parent) }
+        if (Test-Path -LiteralPath $cand) { return (Split-Path -LiteralPath $cand -Parent) }
     }
     return (Get-Location).Path
 }
@@ -67,13 +75,55 @@ function Read-InstallState([string]$InstallDir) {
     try { return Get-Content $path -Raw | ConvertFrom-Json } catch { return $null }
 }
 
+function Add-UniquePath([System.Collections.Generic.List[string]]$List, [string]$Path) {
+    if (-not $Path) { return }
+    try {
+        $norm = [System.IO.Path]::GetFullPath($Path)
+        if (-not $List.Contains($norm)) { $List.Add($norm) | Out-Null }
+    } catch {}
+}
+
 function Get-DataDirCandidates([string]$InstallDir, $State) {
     $dirs = New-Object System.Collections.Generic.List[string]
-    if ($State -and $State.data_dir) { $dirs.Add([string]$State.data_dir) | Out-Null }
-    foreach ($p in @("F:\ai-video-studio\data")) {
-        if ($p -and (Test-Path $p) -and -not $dirs.Contains($p)) { $dirs.Add($p) | Out-Null }
-    }
+    if ($State -and $State.data_dir) { Add-UniquePath $dirs ([string]$State.data_dir) }
+    Add-UniquePath $dirs (Join-Path $InstallDir "data")
+    Add-UniquePath $dirs (Join-Path $env:LOCALAPPDATA "AI Video Tool\data")
+    Add-UniquePath $dirs (Join-Path $env:USERPROFILE "AI Video Tool\data")
     return $dirs
+}
+
+function Get-LegacyAppDataRoots([string]$InstallDir) {
+    $roots = New-Object System.Collections.Generic.List[string]
+    $installData = try { [System.IO.Path]::GetFullPath((Join-Path $InstallDir "data")) } catch { "" }
+    foreach ($legacy in @(
+        (Join-Path $env:LOCALAPPDATA "AI Video Tool"),
+        (Join-Path $env:USERPROFILE "AI Video Tool")
+    )) {
+        if (-not (Test-Path $legacy)) { continue }
+        try {
+            $norm = [System.IO.Path]::GetFullPath($legacy)
+            if ($installData -and ($norm -eq $installData)) { continue }
+            if (-not $roots.Contains($norm)) { $roots.Add($norm) | Out-Null }
+        } catch {}
+    }
+    return $roots
+}
+
+function Remove-TempCaches {
+    foreach ($p in @(
+        (Join-Path $env:TEMP "ave-setup-cache"),
+        (Join-Path $env:TEMP "ave-webview2")
+    )) {
+        if (Test-Path $p) {
+            Write-Host ("  -> temp: {0}" -f $p) -ForegroundColor DarkGray
+            Remove-Item -Recurse -Force $p -ErrorAction SilentlyContinue
+        }
+    }
+    Get-ChildItem $env:TEMP -Directory -Filter "ave-engine-extract-*" -ErrorAction SilentlyContinue |
+        ForEach-Object {
+            Write-Host ("  -> temp: {0}" -f $_.FullName) -ForegroundColor DarkGray
+            Remove-Item -Recurse -Force $_.FullName -ErrorAction SilentlyContinue
+        }
 }
 
 function Stop-AppProcesses {
@@ -118,7 +168,7 @@ function Remove-TreeWithProgress([string]$Path, [string]$Label) {
 function Should-RemoveData([string]$Choice, [array]$DataDirs, [switch]$Quiet) {
     if ($Choice -eq "yes") { return $true }
     if ($Choice -eq "no") { return $false }
-    if ($Quiet) { return $false }
+    if ($Quiet) { return $true }
     if ($DataDirs.Count -eq 0) { return $false }
     Write-Host "Also remove downloaded models and rendered videos?" -ForegroundColor Yellow
     foreach ($d in $DataDirs) {
@@ -141,6 +191,7 @@ Write-Banner
 $installDir = Resolve-InstallDir $InstDir
 $state = Read-InstallState $installDir
 $dataDirs = @(Get-DataDirCandidates $installDir $state | Where-Object { Test-Path $_ })
+$legacyRoots = @(Get-LegacyAppDataRoots $installDir | Where-Object { Test-Path $_ })
 
 Write-Host "[1/3] Install location" -ForegroundColor Yellow
 Write-Host "  $installDir"
@@ -169,13 +220,26 @@ foreach ($c in $components) {
 $statePath = Join-Path $installDir ".ave-install-state.json"
 if (Test-Path $statePath) { Remove-Item -Force $statePath }
 
+Write-Host ""
+Write-Host "Removing temporary setup caches..." -ForegroundColor Yellow
+Remove-TempCaches
+Write-Host "  done" -ForegroundColor Green
+
 if (Should-RemoveData $RemoveData $dataDirs -Quiet:$Quiet) {
     Write-Host ""
-    Write-Host "Removing user data..." -ForegroundColor Yellow
+    Write-Host "Removing user data (models, outputs, cache)..." -ForegroundColor Yellow
     foreach ($d in $dataDirs) {
         if (Test-Path $d) {
             Write-Host ("  -> data: {0}" -f $d) -ForegroundColor Cyan
             Remove-TreeWithProgress $d "data"
+            Write-Host ("  -> data: removed" -f $d) -ForegroundColor Green
+        }
+    }
+    foreach ($root in $legacyRoots) {
+        if (Test-Path $root) {
+            Write-Host ("  -> legacy: {0}" -f $root) -ForegroundColor Cyan
+            Remove-TreeWithProgress $root "legacy"
+            Write-Host ("  -> legacy: removed" -f $root) -ForegroundColor Green
         }
     }
 } else {

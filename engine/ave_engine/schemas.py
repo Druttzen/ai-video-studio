@@ -93,7 +93,10 @@ class MusicVideoRequest(BaseModel):
     range_end: float = -1.0
     min_clip_sec: float = 4.0
     max_clip_sec: float = 8.0
-    max_clips: int = 0
+    max_clips: int = 8
+    duration_mode: str = "full"
+    separate_vocals: bool = False
+    director_craft: dict = Field(default_factory=dict)
 
 
 class CanvasRequest(BaseModel):

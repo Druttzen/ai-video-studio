@@ -3,7 +3,7 @@
   "product": "AI Video Tool",
   "release": {
     "github_repo": "Druttzen/ai-video-studio",
-    "engine_tag": "v0.2.1",
+    "engine_tag": "v0.2.5",
     "tag": "v0.2.5",
     "downloads": {
       "engine_win64": {
@@ -11,7 +11,7 @@
         "archive": "7z",
         "folder": "ave-engine",
         "approx_size_gb": 1.6,
-        "sha256": "dc0177cbb3da9bdf55fee27f95ce57cbda52499452132babf16a7def47033d4d"
+        "sha256": "97a7209d59cea5061cb62f6a0d35b4b194197b58f6ddf82912ff2fa98be6e47a"
       },
       "webview2_bootstrapper": {
         "url": "https://go.microsoft.com/fwlink/p/?LinkId=2124703",
@@ -77,11 +77,25 @@
   "optional_addons": [
     {
       "id": "wav2lip",
-      "name": "Wav2Lip lip-sync (optional)",
+      "name": "Wav2Lip lip-sync",
       "folder": "addons\\wav2lip",
       "required": false,
       "approx_size_gb": 0.5,
-      "description": "Enable lip-sync in music videos. Manual clone or future auto-download."
+      "description": "Lip-sync for music videos.",
+      "github_zip": "https://github.com/Rudrabha/Wav2Lip/archive/refs/heads/master.zip",
+      "zip_strip_prefix": "Wav2Lip-master",
+      "checkpoint": {
+        "url": "https://huggingface.co/numz/wav2lip_studio/resolve/main/wav2lip_gan.pth",
+        "dest": "checkpoints/wav2lip_gan.pth",
+        "approx_bytes": 436000000
+      },
+      "env_var": "AVE_WAV2LIP_DIR"
     }
+  ],
+  "install_phases": [
+    { "id": "platform", "title": "Platform & runtime", "description": "Engine, WebView2, data folder, tools" },
+    { "id": "engine", "title": "AI engine stack", "description": "Verify PyTorch, diffusers, and audio libs (fail-safe)" },
+    { "id": "models", "title": "Hugging Face models", "description": "AI model weights from the Hub" },
+    { "id": "addons", "title": "GitHub addons", "description": "Optional repos (e.g. Wav2Lip)" }
   ]
 }

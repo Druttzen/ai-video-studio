@@ -77,6 +77,7 @@ def build_prompt_plan(
     n_scenes: int,
     audio: AudioAnalysis | None = None,
     image: ImageAnalysis | None = None,
+    director_craft: dict | None = None,
 ) -> PromptPlan:
     brief = (brief or "").strip()
     mood = _detect_mood(brief, audio)
@@ -92,6 +93,23 @@ def build_prompt_plan(
             ", dynamic camera, fast cuts" if audio.tempo >= 125 else ", smooth slow camera movement"
         )
 
+    craft_suffix = ""
+    if director_craft:
+        craft_parts: list[str] = []
+        for key, label in (
+            ("style_line", ""),
+            ("shot_type", "shot type"),
+            ("camera", "camera"),
+            ("lens", "lens"),
+            ("film_format", "film format"),
+            ("lighting", "lighting"),
+            ("color_grade", "color grade"),
+        ):
+            val = str(director_craft.get(key) or "").strip()
+            if val:
+                craft_parts.append(val if not label else f"{label}: {val}")
+        craft_suffix = (", " + ", ".join(craft_parts)) if craft_parts else ""
+
     base_scenes = _split_scenes(brief) or [brief or "abstract visuals"]
 
     # Cycle/extend the scene fragments up to n_scenes, decorating each.
@@ -99,7 +117,7 @@ def build_prompt_plan(
     for i in range(max(1, n_scenes)):
         frag = base_scenes[i % len(base_scenes)]
         scenes.append(
-            f"{frag}, {mood}, {style}{palette_suffix}{motion_suffix}".strip(", ")
+            f"{frag}, {mood}, {style}{palette_suffix}{motion_suffix}{craft_suffix}".strip(", ")
         )
 
     negative = "low quality, blurry, distorted, watermark, text, deformed, jpeg artifacts"

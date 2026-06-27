@@ -121,8 +121,62 @@ pub async fn cancel_job(
 }
 
 #[tauri::command]
-pub async fn complete_onboarding(engine: State<'_, EngineState>) -> Result<Value, String> {
-    engine.post("/onboarding/complete", Value::Null).await
+pub async fn complete_onboarding(app: AppHandle) -> Result<Value, String> {
+    use crate::setup::agent_debug_log;
+
+    let data_dir = EngineState::resolve_data_dir(&app);
+    let path = data_dir.join("onboarding.json");
+
+    // #region agent log
+    agent_debug_log(
+        "A",
+        "commands.rs:complete_onboarding",
+        "writing onboarding.json locally",
+        serde_json::json!({ "path": path.to_string_lossy() }),
+    );
+    // #endregion
+
+    std::fs::create_dir_all(&data_dir).map_err(|e| {
+        let msg = format!("cannot create data folder {}: {e}", data_dir.display());
+        agent_debug_log(
+            "B",
+            "commands.rs:complete_onboarding",
+            "mkdir failed",
+            serde_json::json!({ "error": msg }),
+        );
+        msg
+    })?;
+
+    let completed_at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let state = serde_json::json!({
+        "complete": true,
+        "completed_at": completed_at.to_string(),
+    });
+    let body = serde_json::to_string_pretty(&state).map_err(|e| e.to_string())?;
+    std::fs::write(&path, &body).map_err(|e| {
+        let msg = format!("cannot write {}: {e}", path.display());
+        agent_debug_log(
+            "B",
+            "commands.rs:complete_onboarding",
+            "write failed",
+            serde_json::json!({ "error": msg }),
+        );
+        msg
+    })?;
+
+    // #region agent log
+    agent_debug_log(
+        "A",
+        "commands.rs:complete_onboarding",
+        "onboarding.json written",
+        serde_json::json!({ "path": path.to_string_lossy(), "bytes": body.len() }),
+    );
+    // #endregion
+
+    Ok(state)
 }
 
 /// Open a folder in the system file manager.

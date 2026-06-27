@@ -22,6 +22,14 @@ for pkg in (
     "cv2",
     "PIL",
     "sentencepiece",
+    "librosa",
+    "soundfile",
+    "scipy",
+    "numpy",
+    "demucs",
+    "torchaudio",
+    "fastapi",
+    "pydantic",
 ):
     try:
         d, b, h = collect_all(pkg)

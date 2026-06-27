@@ -33,11 +33,15 @@ impl EngineState {
     }
 
     /// Resolve the data dir where the engine stores models + outputs.
-    ///
+    pub fn resolve_data_dir(app: &AppHandle) -> PathBuf {
+        Self::data_dir(app)
+    }
+
     /// Priority:
     ///   1. `AVE_DATA_DIR` environment variable
     ///   2. `.ave-install-state.json` beside the executable (written by setup)
-    ///   3. `%LOCALAPPDATA%\\AI Video Tool\\data` (per-user default)
+    ///   3. `<install-dir>/data` next to the app executable
+    ///   4. `%LOCALAPPDATA%\\AI Video Tool\\data` (legacy fallback)
     fn data_dir(_app: &AppHandle) -> PathBuf {
         if let Ok(dir) = std::env::var("AVE_DATA_DIR") {
             if !dir.is_empty() {
@@ -57,6 +61,7 @@ impl EngineState {
                         }
                     }
                 }
+                return parent.join("data");
             }
         }
 
@@ -84,51 +89,29 @@ impl EngineState {
         candidates.iter().any(|p| p.exists())
     }
 
-    /// Launch the component setup script (Windows only).
-    pub fn run_component_setup(app: &AppHandle) -> Result<(), String> {
-        #[cfg(not(windows))]
-        return Err("component setup is only supported on Windows".into());
-
-        #[cfg(windows)]
-        {
-            let install_dir = app
-                .path()
-                .executable_dir()
-                .map_err(|e| e.to_string())?;
-            let mut setup = None;
-            if let Ok(res) = app.path().resource_dir() {
-                let p = res.join("installer").join("ave-setup.cmd");
-                if p.exists() {
-                    setup = Some(p);
-                }
-            }
-            if setup.is_none() {
-                if let Ok(exe) = std::env::current_exe() {
-                    if let Some(parent) = exe.parent() {
-                        for name in ["setup.cmd", "ave-setup.cmd"] {
-                            let p = parent.join(name);
-                            if p.exists() {
-                                setup = Some(p);
-                                break;
+    fn apply_engine_env(cmd: &mut Command, app: &AppHandle) {
+        cmd.env("AVE_DATA_DIR", Self::data_dir(app));
+        if let Ok(exe) = std::env::current_exe() {
+            if let Some(parent) = exe.parent() {
+                if let Ok(raw) = std::fs::read_to_string(parent.join(".ave-install-state.json")) {
+                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(&raw) {
+                        if let Some(p) = json
+                            .get("addons")
+                            .and_then(|a| a.get("wav2lip"))
+                            .and_then(|v| v.as_str())
+                        {
+                            if !p.is_empty() {
+                                cmd.env("AVE_WAV2LIP_DIR", p);
+                                return;
                             }
                         }
                     }
                 }
+                let conventional = parent.join("addons").join("wav2lip");
+                if conventional.join("inference.py").exists() {
+                    cmd.env("AVE_WAV2LIP_DIR", &conventional);
+                }
             }
-            let script = setup.ok_or("setup script not found — run install.exe or setup.cmd")?;
-            std::process::Command::new("cmd.exe")
-                .args([
-                    "/c",
-                    "start",
-                    "AI Video Tool Setup",
-                    "/wait",
-                    &script.to_string_lossy(),
-                    "--inst-dir",
-                    &install_dir.to_string_lossy(),
-                ])
-                .spawn()
-                .map_err(|e| e.to_string())?;
-            Ok(())
         }
     }
 
@@ -139,12 +122,10 @@ impl EngineState {
     ///   2. bundled sidecar next to exe -> `binaries/ave-engine[.exe]`.
     ///   3. dev fallback                -> `python -m ave_engine` in ../engine.
     fn build_command(app: &AppHandle) -> Command {
-        let data_dir = Self::data_dir(app);
-
         // 1. explicit override
         if let Ok(bin) = std::env::var("AVE_ENGINE_BIN") {
             let mut c = Command::new(bin);
-            c.env("AVE_DATA_DIR", &data_dir);
+            Self::apply_engine_env(&mut c, app);
             return c;
         }
 
@@ -164,7 +145,7 @@ impl EngineState {
         for candidate in sidecar_candidates {
             if candidate.exists() {
                 let mut c = Command::new(candidate);
-                c.env("AVE_DATA_DIR", &data_dir);
+                Self::apply_engine_env(&mut c, app);
                 return c;
             }
         }
@@ -182,7 +163,7 @@ impl EngineState {
         let mut c = Command::new(python);
         c.args(["-m", "ave_engine"]);
         c.current_dir(engine_dir);
-        c.env("AVE_DATA_DIR", &data_dir);
+        Self::apply_engine_env(&mut c, app);
         c
     }
 

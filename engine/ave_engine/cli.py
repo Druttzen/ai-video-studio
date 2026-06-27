@@ -37,12 +37,40 @@ def cmd_download(model_id: str) -> int:
     return 0
 
 
+def cmd_verify() -> int:
+    report: dict = {"ok": True, "packages": []}
+    try:
+        import torch
+
+        report["torch"] = str(torch.__version__)
+        report["cuda"] = bool(torch.cuda.is_available())
+    except Exception as exc:  # noqa: BLE001
+        report["ok"] = False
+        report["error"] = f"torch: {exc}"
+        print(json.dumps(report))
+        return 1
+
+    for pkg in ("diffusers", "transformers", "huggingface_hub", "accelerate", "fastapi", "librosa", "soundfile", "scipy"):
+        try:
+            mod = __import__(pkg)
+            report["packages"].append(
+                {"name": pkg, "version": str(getattr(mod, "__version__", "ok"))}
+            )
+        except Exception as exc:  # noqa: BLE001
+            report["ok"] = False
+            report["packages"].append({"name": pkg, "error": str(exc)})
+
+    print(json.dumps(report))
+    return 0 if report["ok"] else 1
+
+
 def print_usage() -> None:
     print(
         "Usage:\n"
         "  ave-engine.exe                 Start API server\n"
         "  ave-engine.exe models-status   List models (JSON)\n"
-        "  ave-engine.exe download <id>   Download model weights\n",
+        "  ave-engine.exe download <id>   Download model weights\n"
+        "  ave-engine.exe verify          Verify bundled Python stack\n",
         file=sys.stderr,
     )
 
@@ -60,6 +88,8 @@ def dispatch(argv: list[str]) -> int:
             print("missing model id", file=sys.stderr)
             return 2
         return cmd_download(argv[1])
+    if argv[0] == "verify":
+        return cmd_verify()
     print(f"unknown command: {argv[0]}", file=sys.stderr)
     print_usage()
     return 2

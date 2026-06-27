@@ -34,3 +34,8 @@ numpy>=1.26
 librosa>=0.10
 soundfile>=0.12
 scipy>=1.11
+
+# Optional: vocal separation for lip-sync (match torch CUDA build)
+demucs>=4.0
+# torchaudio must match installed torch, e.g.:
+# pip install torchaudio==2.6.0 --index-url https://download.pytorch.org/whl/cu124
