@@ -200,8 +200,12 @@ function Get-GpuInfo {
         if ($LASTEXITCODE -eq 0 -and $out) {
             $parts = ($out | Select-Object -First 1).Split(",")
             $name = $parts[0].Trim()
-            $vram = ($parts[1] -replace "[^0-9.]", "").Trim()
-            return @{ present = $true; name = $name; vram_gb = [double]$vram }
+            $rawVram = $parts[1].Trim()
+            $vramNum = [double](($rawVram -replace "[^0-9.]", "").Trim())
+            if ($rawVram -match 'MiB' -and $vramNum -gt 64) {
+                $vramNum = [math]::Round($vramNum / 1024, 1)
+            }
+            return @{ present = $true; name = $name; vram_gb = $vramNum }
         }
     } catch {}
     return @{ present = $false; name = "CPU only"; vram_gb = 0 }
