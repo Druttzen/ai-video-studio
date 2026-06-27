@@ -17,7 +17,7 @@ export default function Library({
       <div className="page-header">
         <div>
           <h1>Library</h1>
-          <p className="subtitle">Videos from this session — saved to your outputs folder.</p>
+          <p className="subtitle">All finished videos — persisted across restarts.</p>
         </div>
         {outputsDir && (
           <button type="button" className="ghost" onClick={() => api.openFolder(outputsDir)}>

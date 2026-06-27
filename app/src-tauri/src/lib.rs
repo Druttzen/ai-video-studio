@@ -37,6 +37,7 @@ pub fn run() {
             commands::list_jobs,
             commands::job_status,
             commands::cancel_job,
+            commands::complete_onboarding,
             commands::open_folder,
             commands::reveal_in_explorer,
         ])

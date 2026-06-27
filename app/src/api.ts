@@ -29,6 +29,11 @@ export interface Health {
   policy: Record<string, unknown>;
   recommended_defaults: RecommendedDefaults;
   settings: { data_dir: string; models_dir: string; outputs_dir: string };
+  onboarding?: {
+    complete: boolean;
+    has_model: boolean;
+    default_model_id: string;
+  };
 }
 
 export interface ModelStatus {
@@ -156,6 +161,7 @@ export const KIND_LABELS: Record<string, string> = {
 
 export const api = {
   health: () => invoke<Health>("engine_health"),
+  completeOnboarding: () => invoke<{ complete: boolean }>("complete_onboarding"),
   listModels: () => invoke<ModelStatus[]>("list_models"),
   downloadModel: (model_id: string) =>
     invoke<ModelStatus>("download_model", { modelId: model_id }),

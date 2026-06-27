@@ -1,6 +1,6 @@
 # Dj MAD — AI Video Tool
 
-**Version 0.2.0**
+**Version 0.2.1**
 
 A local-first desktop app for **AI video generation** — text-to-video,
 image-to-video, **beat-synced music videos**, and **perfect-looping Spotify
@@ -20,9 +20,8 @@ when present, CPU fallback otherwise) and downloads models on demand.
 - **Analyzers** — music (librosa), image (palette/brightness), and a chat/brief
   analyzer that turns text into coherent per-scene prompts.
 
-> Status: working scaffold. The full pipeline (UI → orchestration → model engine →
-> export) is wired end-to-end. LTX-Video is the default model; CogVideoX and
-> Stable Video Diffusion adapters are included.
+> **Standalone local app** — install, download models, generate MP4s on your GPU. Library
+> persists across restarts. First-run wizard guides setup. LTX-Video is the default model.
 
 ---
 

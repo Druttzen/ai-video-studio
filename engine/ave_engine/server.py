@@ -18,6 +18,8 @@ from .device import build_policy, detect_device
 from .presets import recommended_defaults
 from .jobs import get_jobs
 from .models.manager import get_manager
+from .models.registry import all_models
+from .onboarding import get_state as get_onboarding_state, mark_complete as mark_onboarding_complete
 from .schemas import (
     AnalyzeAudioRequest,
     AnalyzeImageRequest,
@@ -44,6 +46,9 @@ app.add_middleware(
 @app.get("/health")
 def health() -> dict:
     info = detect_device()
+    mgr = get_manager()
+    has_model = any(mgr.is_downloaded(m.id) for m in all_models())
+    onboarding = get_onboarding_state()
     return {
         "status": "ok",
         "version": __version__,
@@ -51,7 +56,17 @@ def health() -> dict:
         "policy": build_policy(info).as_dict(),
         "recommended_defaults": recommended_defaults(info.total_vram_gb, info.backend),
         "settings": get_settings().to_dict(),
+        "onboarding": {
+            "complete": bool(onboarding.get("complete")),
+            "has_model": has_model,
+            "default_model_id": "ltx-video",
+        },
     }
+
+
+@app.post("/onboarding/complete")
+def complete_onboarding() -> dict:
+    return mark_onboarding_complete()
 
 
 @app.get("/models")

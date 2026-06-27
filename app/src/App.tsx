@@ -6,6 +6,7 @@ import Canvas from "./components/Canvas";
 import Models from "./components/Models";
 import Library from "./components/Library";
 import Settings from "./components/Settings";
+import OnboardingWizard from "./components/OnboardingWizard";
 import { ActiveJobStrip } from "./components/shared";
 
 type Tab = "generate" | "musicvideo" | "canvas" | "models" | "library" | "settings";
@@ -17,6 +18,7 @@ export default function App() {
   const [jobs, setJobs] = useState<JobStatus[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [booting, setBooting] = useState(true);
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   const showError = useCallback((e: unknown) => {
     setError(String(e));
@@ -31,6 +33,7 @@ export default function App() {
         if (!alive) return;
         setHealth(h);
         setBooting(false);
+        setShowOnboarding(!h.onboarding?.complete);
       } catch {
         if (alive) window.setTimeout(tryHealth, 1000);
       }
@@ -165,6 +168,23 @@ export default function App() {
       </main>
 
       {error && <div className="toast">{error}</div>}
+
+      {showOnboarding && health && (
+        <OnboardingWizard
+          health={health}
+          models={models}
+          onDone={() => {
+            setShowOnboarding(false);
+            setHealth((h) =>
+              h ? { ...h, onboarding: { ...h.onboarding!, complete: true } } : h,
+            );
+          }}
+          onGoModels={() => {
+            setTab("models");
+          }}
+          onError={showError}
+        />
+      )}
     </div>
   );
 }

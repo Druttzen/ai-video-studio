@@ -93,6 +93,11 @@ pub async fn cancel_job(
         .await
 }
 
+#[tauri::command]
+pub async fn complete_onboarding(engine: State<'_, EngineState>) -> Result<Value, String> {
+    engine.post("/onboarding/complete", Value::Null).await
+}
+
 /// Open a folder in the system file manager.
 #[tauri::command]
 pub fn open_folder(path: String) -> Result<(), String> {

@@ -1,10 +1,7 @@
 """Single-worker job queue for all pipeline kinds.
 
-GPU work is serialized through one background worker thread (two diffusion jobs
-at once on a consumer GPU just means two OOMs). Each job carries a ``kind`` that
-selects a runner from :mod:`ave_engine.pipelines`, plus a free-form ``payload``.
-Live progress is polled by the UI. State is in-memory (process lifetime), which
-is fine for a desktop sidecar.
+Finished jobs are written to ``data/cache/job-history.json`` so the Library
+tab still lists renders after the engine restarts.
 """
 
 from __future__ import annotations
@@ -15,6 +12,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Optional
 
+from . import job_history
 from .config import get_settings
 
 
@@ -53,10 +51,24 @@ class JobManager:
     def __init__(self) -> None:
         self._jobs: dict[str, Job] = {}
         self._order: list[str] = []
+        self._history: list[dict] = []
         self._q: "queue.Queue[str]" = queue.Queue()
         self._lock = threading.Lock()
+        self._load_history()
         self._worker = threading.Thread(target=self._run_loop, name="job-worker", daemon=True)
         self._worker.start()
+
+    def _load_history(self) -> None:
+        entries = job_history.load()
+        discovered = job_history.discover_from_outputs()
+        seen = {e.get("job_id") for e in entries}
+        for d in discovered:
+            if d.get("job_id") not in seen:
+                entries.insert(0, d)
+                seen.add(d.get("job_id"))
+        if discovered:
+            job_history.save(entries)
+        self._history = entries
 
     def submit(self, kind: str, payload: dict, label: str = "") -> Job:
         job = Job(
@@ -74,11 +86,20 @@ class JobManager:
 
     def get(self, job_id: str) -> Optional[Job]:
         with self._lock:
-            return self._jobs.get(job_id)
+            job = self._jobs.get(job_id)
+            if job:
+                return job
+        for entry in self._history:
+            if entry.get("job_id") == job_id:
+                return _job_from_history(entry)
+        return None
 
     def list(self) -> list[dict]:
         with self._lock:
-            return [self._jobs[j].to_status() for j in reversed(self._order)]
+            live = [self._jobs[j].to_status() for j in reversed(self._order)]
+        live_ids = {s["job_id"] for s in live}
+        archived = [h for h in self._history if h.get("job_id") not in live_ids]
+        return live + archived
 
     def cancel(self, job_id: str) -> bool:
         with self._lock:
@@ -89,16 +110,24 @@ class JobManager:
                 job.cancel = True
                 if job.status == "queued":
                     job.status = "cancelled"
+                    self._persist(job)
                 return True
         return False
+
+    def _persist(self, job: Job) -> None:
+        if job.status not in ("done", "error", "cancelled"):
+            return
+        job_history.append(job.to_status())
+        with self._lock:
+            self._history = job_history.load()
 
     def _run_loop(self) -> None:
         while True:
             job_id = self._q.get()
             job = self.get(job_id)
             if job is None or job.cancel:
-                if job:
-                    job.status = "cancelled"
+                if job and job.status == "cancelled":
+                    self._persist(job)
                 continue
             self._execute(job)
 
@@ -122,6 +151,24 @@ class JobManager:
             job.status = "error"
             job.error = str(exc)
             job.message = "failed"
+        finally:
+            self._persist(job)
+
+
+def _job_from_history(entry: dict) -> Job:
+    return Job(
+        job_id=str(entry.get("job_id", "")),
+        kind=str(entry.get("kind", "generate")),
+        payload=entry.get("request") or {},
+        label=str(entry.get("label", "")),
+        status=str(entry.get("status", "done")),
+        progress=float(entry.get("progress", 1.0)),
+        step=int(entry.get("step", 0)),
+        total_steps=int(entry.get("total_steps", 0)),
+        message=str(entry.get("message", "")),
+        output_path=entry.get("output_path"),
+        error=entry.get("error"),
+    )
 
 
 _manager: Optional[JobManager] = None
