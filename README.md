@@ -1,6 +1,6 @@
 # Dj MAD — AI Video Tool
 
-**Version 0.2.6**
+**Version 0.2.7**
 
 A local-first desktop app for **AI video generation** — text-to-video,
 image-to-video, **beat-synced music videos**, and **perfect-looping Spotify
@@ -17,8 +17,9 @@ when present, CPU fallback otherwise) and downloads models on demand.
   length to the song (**beat sync + length sync**). Optional **lip sync** stage.
 - **Spotify Canvas** — vertical 9:16 **perfectly-looping** clips (10/20/30 s) via
   seamless boomerang or crossfade, optionally synced to a snippet of a track.
-- **Analyzers** — music (librosa), image (palette/brightness), and a chat/brief
-  analyzer that turns text into coherent per-scene prompts.
+- **Analyzers** — dedicated tab: drop a track and picture for live librosa + image
+  reports (tempo, highlight window, palette, mood). **Path E** one-click sends both
+  to Music Video (i2v + lip-sync hints). Import Music Creator handoff with audio sidecar.
 - **AI Music Creator handoff** — import a project bundle JSON exported from
   [AI Music Creator](https://github.com/Druttzen/ai-music-tool) on the Music Video tab.
 - **Director craft** — shot type, camera, lighting, and color-grade controls on
@@ -185,6 +186,19 @@ $env:AVE_PYTHON = "$env:USERPROFILE\miniconda3\envs\avestudio\python.exe"
 ```
 
 Output: `F:\ai-video-studio\release\` (`install.exe`, `payload\ave-engine\`, portable exe).
+
+---
+
+## Analyzers & Path E
+
+1. Open the **Analyzers** tab.
+2. Drop an audio file and/or reference image (or import a Music Creator handoff JSON).
+3. Review tempo, highlight range, energy curve, palette, and visual mood.
+4. Click **Path E — one click** when both track and picture are analyzed — the app
+   opens Music Video with image-to-video, brief, scene count, and lip-sync hints prefilled.
+5. Use **Highlight clip** for a 30 s peak-energy section instead of the full song.
+
+Handoff bundles can reference an external audio sidecar; the UI prompts you to load the matching file.
 
 ---
 

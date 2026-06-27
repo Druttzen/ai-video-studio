@@ -194,6 +194,31 @@ export interface AudioAnalysis {
   clip_duration_sec?: number;
   range_start?: number;
   range_end?: number;
+  highlight_start?: number;
+  highlight_end?: number;
+  summary?: string;
+}
+
+export interface ImageAnalysis {
+  path: string;
+  width: number;
+  height: number;
+  aspect: number;
+  brightness: number;
+  palette: string[];
+  is_portrait: boolean;
+  avg_color?: string;
+  dominant_hue?: number;
+  hue_label?: string;
+  color_temperature?: string;
+  aspect_label?: string;
+  saturation?: number;
+  contrast?: number;
+  visual_mood?: string;
+  suggested_genres?: string[];
+  suggested_sounds?: string[];
+  suggested_rhythms?: string[];
+  summary?: string;
 }
 
 export interface MusicVideoRequest {
@@ -284,6 +309,10 @@ export const api = {
         range_end: opts?.range_end ?? -1,
         max_clips: opts?.max_clips ?? 8,
       },
+    }),
+  analyzeImage: (image_b64: string) =>
+    invoke<ImageAnalysis>("analyze_image", {
+      request: { image_b64 },
     }),
   createMusicVideo: (request: MusicVideoRequest) =>
     invoke<{ job_id: string }>("create_music_video", { request }),

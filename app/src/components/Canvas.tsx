@@ -1,14 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { JobStatus, ModelStatus, api } from "../api";
+import type { CanvasAnalyzerSeed } from "../lib/analyzer-bridge";
 import { JobPanel, fileToDataUrl } from "./shared";
 
 interface Props {
   models: ModelStatus[];
   jobs: JobStatus[];
   onError: (e: unknown) => void;
+  seed?: CanvasAnalyzerSeed | null;
+  onSeedConsumed?: () => void;
 }
 
-export default function Canvas({ models, jobs, onError }: Props) {
+export default function Canvas({ models, jobs, onError, seed, onSeedConsumed }: Props) {
   const ready = useMemo(() => models.filter((m) => m.downloaded), [models]);
 
   const [modelId, setModelId] = useState("");
@@ -26,6 +29,19 @@ export default function Canvas({ models, jobs, onError }: Props) {
   useEffect(() => {
     if (!modelId && ready.length) setModelId(ready[0].id);
   }, [ready, modelId]);
+
+  useEffect(() => {
+    if (!seed) return;
+    setBrief(seed.brief);
+    setImage(seed.imageB64);
+    setTask("image-to-video");
+    if (seed.audioB64) {
+      setAudio(seed.audioB64);
+      setAudioName(seed.audioName);
+      setWithAudio(true);
+    }
+    onSeedConsumed?.();
+  }, [seed, onSeedConsumed]);
 
   const selected = ready.find((m) => m.id === modelId) || null;
   const job = jobId ? jobs.find((j) => j.job_id === jobId) || null : null;

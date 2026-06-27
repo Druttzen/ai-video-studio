@@ -9,6 +9,7 @@ import {
 import { DirectorCatalog, loadDirectorCatalog } from "../lib/director-catalog";
 import type { HandoffApplyResult } from "../lib/music-handoff";
 import { MV_DURATION_MODES } from "../lib/music-handoff";
+import type { MusicVideoAnalyzerSeed } from "../lib/analyzer-bridge";
 import { DEFAULT_PRODUCTION_MAX_CLIPS, suggestedSceneCount } from "../lib/production-clip-plan";
 import {
   enrichBriefWithStyleDna,
@@ -24,9 +25,11 @@ interface Props {
   models: ModelStatus[];
   jobs: JobStatus[];
   onError: (e: unknown) => void;
+  seed?: MusicVideoAnalyzerSeed | null;
+  onSeedConsumed?: () => void;
 }
 
-export default function MusicVideo({ models, jobs, onError }: Props) {
+export default function MusicVideo({ models, jobs, onError, seed, onSeedConsumed }: Props) {
   const ready = useMemo(() => models.filter((m) => m.downloaded), [models]);
 
   const [modelId, setModelId] = useState("");
@@ -64,6 +67,25 @@ export default function MusicVideo({ models, jobs, onError }: Props) {
   useEffect(() => {
     if (!modelId && ready.length) setModelId(ready[0].id);
   }, [ready, modelId]);
+
+  useEffect(() => {
+    if (!seed) return;
+    setBrief(seed.brief);
+    setAudio(seed.audioB64);
+    setAudioName(seed.audioName);
+    setAnalysis(seed.audioAnalysis);
+    if (seed.imageB64) setImage(seed.imageB64);
+    setDurationMode(seed.durationMode);
+    setRangeStart(seed.rangeStart);
+    setRangeEnd(seed.rangeEnd);
+    if (seed.preferImageToVideo) setTask("image-to-video");
+    if (seed.lipSync) setLipSync(true);
+    if (seed.audioAnalysis.clip_plan?.length) {
+      setNScenes(suggestedSceneCount(seed.audioAnalysis.clip_plan));
+    }
+    setHandoffNote(seed.note);
+    onSeedConsumed?.();
+  }, [seed, onSeedConsumed]);
 
   const selected = ready.find((m) => m.id === modelId) || null;
   const job = jobId ? jobs.find((j) => j.job_id === jobId) || null : null;
@@ -109,6 +131,12 @@ export default function MusicVideo({ models, jobs, onError }: Props) {
       if (result.preferImageToVideo) setTask("image-to-video");
       if (result.lipSyncHint) setLipSync(true);
       if (result.styleTokens) setStyleDnaText(result.styleTokens);
+      if (result.audioAnalysis) {
+        setAnalysis(result.audioAnalysis as AudioAnalysis);
+        if (result.audioAnalysis.clip_plan?.length) {
+          setNScenes(suggestedSceneCount(result.audioAnalysis.clip_plan));
+        }
+      }
       setHandoffNote(result.note);
     },
     [],
@@ -188,7 +216,14 @@ export default function MusicVideo({ models, jobs, onError }: Props) {
         </div>
       ) : (
         <>
-          <HandoffImport onApplied={onHandoff} onError={onError} />
+          <HandoffImport
+            onApplied={onHandoff}
+            onError={onError}
+            onAudioSidecar={(b64, name) => {
+              setAudio(b64);
+              setAudioName(name);
+            }}
+          />
           {handoffNote && <p className="desc good-text">{handoffNote}</p>}
 
           <InspireBar mode="music-video" onBrief={setBrief} />

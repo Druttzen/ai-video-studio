@@ -42,6 +42,9 @@ class AudioAnalysis:
     clip_plan: list[ClipPlanEntry] = field(default_factory=list)
     range_start: float = 0.0
     range_end: float = 0.0
+    highlight_start: float = 0.0
+    highlight_end: float = 0.0
+    summary: str = ""
 
     @property
     def clip_count(self) -> int:
@@ -68,6 +71,9 @@ class AudioAnalysis:
             "clip_duration_sec": round(self.clip_duration_sec, 3),
             "range_start": round(self.range_start, 3),
             "range_end": round(self.range_end, 3),
+            "highlight_start": round(self.highlight_start, 3),
+            "highlight_end": round(self.highlight_end, 3),
+            "summary": self.summary,
         }
 
 
@@ -204,6 +210,13 @@ def analyze_audio(
         max_clips=max(0, int(max_clips)),
     )
     vocals_likely = estimate_vocals_likely(segment, sr)
+    hi_start, hi_end = _highlight_window(energy, duration)
+
+    summary = (
+        f"{round(tempo_val)} BPM, {round(duration, 1)}s track, "
+        f"{len(beats)} beats, highlight {round(hi_start, 1)}–{round(hi_end, 1)}s"
+        + (" (vocals likely)" if vocals_likely else "")
+    )
 
     return AudioAnalysis(
         duration=duration,
@@ -218,7 +231,29 @@ def analyze_audio(
         clip_plan=clip_plan,
         range_start=r_start,
         range_end=r_end,
+        highlight_start=hi_start,
+        highlight_end=hi_end,
+        summary=summary,
     )
+
+
+def _highlight_window(energy: list[float], duration: float, window_sec: float = 30.0) -> tuple[float, float]:
+    if not energy or duration <= 0:
+        return 0.0, min(window_sec, duration)
+    rate = len(energy) / max(duration, 1e-3)
+    win = max(1, int(window_sec * rate))
+    best_i, best_sum = 0, -1.0
+    for i in range(max(1, len(energy) - win + 1)):
+        chunk = sum(energy[i : i + win])
+        if chunk > best_sum:
+            best_sum, best_i = chunk, i
+    start = best_i / rate
+    end = min(duration, start + window_sec)
+    if end - start < 6:
+        mid = duration / 2
+        start = max(0.0, mid - 15)
+        end = min(duration, mid + 15)
+    return round(start, 3), round(end, 3)
 
 
 def _resample_curve(times: np.ndarray, values: np.ndarray, duration: float, rate: float) -> list[float]:

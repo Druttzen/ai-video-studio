@@ -3,14 +3,21 @@ import { api, AppBootstrap, Health, JobStatus, ModelStatus } from "./api";
 import Generate from "./components/Generate";
 import MusicVideo from "./components/MusicVideo";
 import Canvas from "./components/Canvas";
+import AnalyzersPanel from "./components/AnalyzersPanel";
 import Models from "./components/Models";
 import Library from "./components/Library";
 import Settings from "./components/Settings";
 import OnboardingWizard from "./components/OnboardingWizard";
 import SetupConsole from "./components/SetupConsole";
 import { ActiveJobStrip } from "./components/shared";
+import {
+  emptyAnalyzerSession,
+  type AnalyzerSession,
+  type CanvasAnalyzerSeed,
+  type MusicVideoAnalyzerSeed,
+} from "./lib/analyzer-bridge";
 
-type Tab = "generate" | "musicvideo" | "canvas" | "models" | "library" | "settings";
+type Tab = "generate" | "analyzers" | "musicvideo" | "canvas" | "models" | "library" | "settings";
 
 export default function App() {
   const [tab, setTab] = useState<Tab>("generate");
@@ -22,6 +29,9 @@ export default function App() {
   const [booting, setBooting] = useState(true);
   const [needsSetup, setNeedsSetup] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [analyzerSession, setAnalyzerSession] = useState<AnalyzerSession>(emptyAnalyzerSession);
+  const [mvSeed, setMvSeed] = useState<MusicVideoAnalyzerSeed | null>(null);
+  const [canvasSeed, setCanvasSeed] = useState<CanvasAnalyzerSeed | null>(null);
 
   const showError = useCallback((e: unknown) => {
     setError(String(e));
@@ -137,6 +147,7 @@ export default function App() {
           {(
             [
               ["generate", "Generate"],
+              ["analyzers", "Analyzers"],
               ["musicvideo", "Music Video"],
               ["canvas", "Spotify Canvas"],
               ["models", "Models"],
@@ -200,10 +211,36 @@ export default function App() {
           </div>
         ) : tab === "generate" ? (
           <Generate models={models} jobs={jobs} health={health} onError={showError} />
+        ) : tab === "analyzers" ? (
+          <AnalyzersPanel
+            session={analyzerSession}
+            onSessionChange={setAnalyzerSession}
+            onSendMusicVideo={(seed) => {
+              setMvSeed(seed);
+              setTab("musicvideo");
+            }}
+            onSendCanvas={(seed) => {
+              setCanvasSeed(seed);
+              setTab("canvas");
+            }}
+            showError={showError}
+          />
         ) : tab === "musicvideo" ? (
-          <MusicVideo models={models} jobs={jobs} onError={showError} />
+          <MusicVideo
+            models={models}
+            jobs={jobs}
+            onError={showError}
+            seed={mvSeed}
+            onSeedConsumed={() => setMvSeed(null)}
+          />
         ) : tab === "canvas" ? (
-          <Canvas models={models} jobs={jobs} onError={showError} />
+          <Canvas
+            models={models}
+            jobs={jobs}
+            onError={showError}
+            seed={canvasSeed}
+            onSeedConsumed={() => setCanvasSeed(null)}
+          />
         ) : tab === "models" ? (
           <Models models={models} health={health} onError={showError} />
         ) : tab === "library" ? (
