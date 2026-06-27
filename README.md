@@ -1,6 +1,6 @@
 # Dj MAD — AI Video Tool
 
-**Version 0.2.1**
+**Version 0.2.6**
 
 A local-first desktop app for **AI video generation** — text-to-video,
 image-to-video, **beat-synced music videos**, and **perfect-looping Spotify
@@ -19,6 +19,11 @@ when present, CPU fallback otherwise) and downloads models on demand.
   seamless boomerang or crossfade, optionally synced to a snippet of a track.
 - **Analyzers** — music (librosa), image (palette/brightness), and a chat/brief
   analyzer that turns text into coherent per-scene prompts.
+- **AI Music Creator handoff** — import a project bundle JSON exported from
+  [AI Music Creator](https://github.com/Druttzen/ai-music-tool) on the Music Video tab.
+- **Director craft** — shot type, camera, lighting, and color-grade controls on
+  Generate and Music Video (ported from AI Video Creator).
+- **Demucs vocal isolation** — optional pre-step before Wav2Lip lip-sync.
 
 > **Standalone local app** — install, download models, generate MP4s on your GPU. Library
 > persists across restarts. First-run wizard guides setup. LTX-Video is the default model.
@@ -183,18 +188,28 @@ Output: `F:\ai-video-studio\release\` (`install.exe`, `payload\ave-engine\`, por
 
 ---
 
+## Import from AI Music Creator
+
+1. In **AI Music Creator**, export a project bundle (handoff v2 JSON).
+2. Open **Music Video** in Dj MAD AI Video Tool → **Import from AI Music Creator**.
+3. Load the bundle, add your audio file (match the sidecar name if prompted), and optional reference image for Path E.
+4. Use **Director craft** and **Style DNA** to refine the brief, then render.
+
+---
+
 ## Music sync, Canvas & lip-sync
 
 - **Beat sync**: the audio analyzer (librosa) extracts beat timestamps; the
   compose layer places cuts on every *N*-th beat (configurable in the UI).
+- **Smart clip plan**: variable 4–8 s segments aligned to beats (cap 8 clips per render).
+- **Highlight mode**: render a highlight section instead of the full track.
 - **Length sync**: the rendered timeline is stretched to the full track length,
   then the original audio is muxed in.
 - **Perfect loops**: Canvas uses a *boomerang* (forward + reversed) unit for a
   mathematically seamless loop, or a *crossfade* blend, looped to 10/20/30 s.
-- **Lip sync** is an optional, gracefully-degrading stage. To enable it, clone
-  [Wav2Lip](https://github.com/Rudrabha/Wav2Lip), set `AVE_WAV2LIP_DIR` to the
-  checkout, and place `checkpoints/wav2lip_gan.pth` inside it. If it isn't set
-  up, the music-video render still completes and reports "lip-sync skipped".
+- **Lip sync** is optional. Post-install setup can download **Wav2Lip** + checkpoint.
+  Enable **Isolate vocals (Demucs)** for cleaner lip-sync when `demucs` is in the engine bundle.
+  If Wav2Lip or Demucs is missing, the music-video render still completes with a warning.
 
 The analysis + compose layers are model-free and were verified end-to-end on
 synthetic media, so beat detection, beat-synced assembly and perfect looping

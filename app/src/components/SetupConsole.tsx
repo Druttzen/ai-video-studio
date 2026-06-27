@@ -157,23 +157,6 @@ export default function SetupConsole({ onComplete, onError }: Props) {
                 `> ${p.label}: ${p.percent.toFixed(1)}% (${formatBytes(p.done_bytes)} / ${formatBytes(p.total_bytes)})`,
               );
             }
-            // #region agent log
-            if (bucket > prev || p.percent < 5) {
-              fetch("http://127.0.0.1:7749/ingest/f9f520f5-e88c-4cbf-af23-d092d1cdeec3", {
-                method: "POST",
-                headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "d02589" },
-                body: JSON.stringify({
-                  sessionId: "d02589",
-                  hypothesisId: "A",
-                  location: "SetupConsole.tsx:setup-progress",
-                  message: "live progress event",
-                  data: { label: p.label, percent: p.percent, done: p.done_bytes },
-                  timestamp: Date.now(),
-                  runId: "post-fix",
-                }),
-              }).catch(() => {});
-            }
-            // #endregion
           }
         }),
       );

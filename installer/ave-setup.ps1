@@ -41,37 +41,6 @@ function Write-SetupPhase([string]$Id, [string]$Title, [string]$State, [int]$Ind
     }
 }
 
-# #region agent log
-function Write-AgentDebugLog {
-    param([string]$HypothesisId, [string]$Location, [string]$Message, $Data = @{})
-    $entry = @{
-        sessionId    = "d02589"
-        hypothesisId = $HypothesisId
-        location     = $Location
-        message      = $Message
-        data         = $Data
-        timestamp    = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
-        runId        = "pre-fix"
-    } | ConvertTo-Json -Compress -Depth 6
-    $paths = @(
-        (Join-Path $env:LOCALAPPDATA "AI Video Tool\debug-d02589.log")
-    )
-    $scriptRoot = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
-    if ($scriptRoot) {
-        $paths += (Join-Path (Split-Path $scriptRoot -Parent) "debug-d02589.log")
-    }
-    foreach ($lp in $paths) {
-        try {
-            $parent = Split-Path $lp -Parent
-            if ($parent -and -not (Test-Path $parent)) {
-                New-Item -ItemType Directory -Force -Path $parent | Out-Null
-            }
-            Add-Content -Path $lp -Value $entry -Encoding UTF8
-        } catch {}
-    }
-}
-# #endregion
-
 function Estimate-EtaMinutes([long]$Bytes) {
     if ($Bytes -le 0) { return 1 }
     $rate = 40MB
@@ -448,12 +417,6 @@ function Expand-EngineArchive {
         [Parameter(Mandatory)][string]$ArchiveType,
         [string]$InnerFolder = "ave-engine"
     )
-    # #region agent log
-    Write-AgentDebugLog -HypothesisId "B" -Location "ave-setup.ps1:Expand-EngineArchive" -Message "extract starting" -Data @{
-        archivePath = $ArchivePath; destDir = $DestDir; archiveType = $ArchiveType
-        archiveBytes = if (Test-Path $ArchivePath) { (Get-Item $ArchivePath).Length } else { 0 }
-    }
-    # #endregion
     if (Test-Path $DestDir) { Remove-Item -Recurse -Force $DestDir }
     $temp = Join-Path $env:TEMP ("ave-engine-extract-" + [guid]::NewGuid().ToString("N"))
     New-Item -ItemType Directory -Force -Path $temp | Out-Null
@@ -518,11 +481,6 @@ function Expand-EngineArchive {
     } finally {
         if (Test-Path $temp) { Remove-Item -Recurse -Force $temp -ErrorAction SilentlyContinue }
     }
-    # #region agent log
-    Write-AgentDebugLog -HypothesisId "B" -Location "ave-setup.ps1:Expand-EngineArchive" -Message "extract finished" -Data @{
-        destDir = $DestDir; engineExeExists = (Test-Path (Join-Path $DestDir "ave-engine.exe"))
-    }
-    # #endregion
 }
 
 function Install-WebView2Bootstrapper($Manifest) {
@@ -623,17 +581,7 @@ function Invoke-EngineCli([string]$EngineExe, [string]$DataDir, [string[]]$Engin
 }
 
 function Get-EngineModelStatus([string]$EngineExe, [string]$DataDir) {
-    # #region agent log
-    Write-AgentDebugLog -HypothesisId "E" -Location "ave-setup.ps1:Get-EngineModelStatus" -Message "models-status starting" -Data @{
-        engineExe = $EngineExe; dataDir = $DataDir; engineExists = (Test-Path $EngineExe)
-    }
-    # #endregion
     $r = Invoke-EngineCli $EngineExe $DataDir @("models-status")
-    # #region agent log
-    Write-AgentDebugLog -HypothesisId "E" -Location "ave-setup.ps1:Get-EngineModelStatus" -Message "models-status finished" -Data @{
-        exitCode = $r.ExitCode; stdoutLen = $r.StdOut.Length; stderrPreview = $r.StdErr.Substring(0, [Math]::Min(200, $r.StdErr.Length))
-    }
-    # #endregion
     if ($r.ExitCode -ne 0) { return @() }
     try { return @($r.StdOut | ConvertFrom-Json) } catch { return @() }
 }
@@ -835,11 +783,6 @@ function Install-EngineVerifyPhase {
     Write-SetupLog "Verifying AI engine stack (PyTorch, diffusers, audio libs)..."
 
     $engineExe = Get-EngineExe $InstallDir
-    # #region agent log
-    Write-AgentDebugLog -HypothesisId "H3" -Location "ave-setup.ps1:Install-EngineVerifyPhase" -Message "verify entry" -Data @{
-        failSafe = [bool]$FailSafe; engineExeExists = (Test-Path $engineExe)
-    }
-    # #endregion
     if (-not (Test-Path $engineExe)) {
         Write-SetupLog "Engine not installed yet - stack verify deferred."
         Write-SetupPhase "engine" $meta.title "done" $meta.index $meta.total
@@ -861,11 +804,6 @@ function Install-EngineVerifyPhase {
             if ($FailSafe) {
                 Write-SetupLog "Engine stack verify warning (non-blocking): $detail"
                 Write-SetupPhase "engine" $meta.title "done" $meta.index $meta.total
-                # #region agent log
-                Write-AgentDebugLog -HypothesisId "H4" -Location "ave-setup.ps1:Install-EngineVerifyPhase" -Message "verify fail-safe exit" -Data @{
-                    ok = $false; exitCode = $r.ExitCode; detail = $detail
-                }
-                # #endregion
                 return $false
             }
             Write-SetupPhase "engine" $meta.title "error" $meta.index $meta.total
@@ -896,19 +834,11 @@ function Install-EngineVerifyPhase {
         }
 
         Write-SetupPhase "engine" $meta.title "done" $meta.index $meta.total
-        # #region agent log
-        Write-AgentDebugLog -HypothesisId "H3" -Location "ave-setup.ps1:Install-EngineVerifyPhase" -Message "verify success" -Data @{ ok = $true }
-        # #endregion
         return $true
     } catch {
         if ($FailSafe) {
             Write-SetupLog "Engine stack verify warning (non-blocking): $($_.Exception.Message)"
             Write-SetupPhase "engine" $meta.title "done" $meta.index $meta.total
-            # #region agent log
-            Write-AgentDebugLog -HypothesisId "H4" -Location "ave-setup.ps1:Install-EngineVerifyPhase" -Message "verify fail-safe exit" -Data @{
-                ok = $false; error = $_.Exception.Message
-            }
-            # #endregion
             return $false
         }
         Write-SetupPhase "engine" $meta.title "error" $meta.index $meta.total
@@ -938,6 +868,7 @@ function Install-AddonsPhase([string]$InstallDir, $Manifest, [switch]$DoInstall)
     $cache = Join-Path $env:TEMP "ave-setup-cache"
     New-Item -ItemType Directory -Force -Path $cache | Out-Null
     foreach ($addon in $Manifest.optional_addons) {
+        try {
         $dest = Join-Path $InstallDir ($addon.folder -replace '/', '\')
         if (Test-AddonInstalled $InstallDir $addon) {
             Write-SetupLog "$($addon.name) already installed."
@@ -980,6 +911,10 @@ function Install-AddonsPhase([string]$InstallDir, $Manifest, [switch]$DoInstall)
         }
         Write-SetupLog "$($addon.name) installed."
         $paths[$addon.id] = $dest
+        } catch {
+            Write-SetupLog "Addon $($addon.name) warning (non-blocking): $_"
+            Write-Host "  Addon $($addon.name) failed: $_" -ForegroundColor Yellow
+        }
     }
     Write-SetupPhase "addons" $meta.title "done" $meta.index $meta.total
     return $paths
@@ -1012,11 +947,6 @@ function Install-ModelsPhase([string]$InstallDir, [string]$DataDir, $Manifest, $
     }
 
     $toGet = Select-ModelsToDownload -Catalog $catalog -Manifest $manifest -Gpu $Gpu -Disks $Disks -DownloadModels $DownloadModels -PostInstall:$PostInstall -Quiet:$Quiet
-    # #region agent log
-    Write-AgentDebugLog -HypothesisId "C" -Location "ave-setup.ps1:Install-ModelsPhase" -Message "models selected" -Data @{
-        catalogCount = $catalog.Count; toGet = @($toGet)
-    }
-    # #endregion
     if ($toGet.Count -eq 0) {
         Write-Host "  No models selected for download." -ForegroundColor DarkGray
         return $true
@@ -1030,9 +960,6 @@ function Install-ModelsPhase([string]$InstallDir, [string]$DataDir, $Manifest, $
     foreach ($modelId in $toGet) {
         $meta = @($catalog | Where-Object { $_.id -eq $modelId } | Select-Object -First 1)
         $name = if ($meta) { $meta.name } else { $modelId }
-        # #region agent log
-        Write-AgentDebugLog -HypothesisId "C" -Location "ave-setup.ps1:Install-ModelsPhase" -Message "model download starting" -Data @{ modelId = $modelId; name = $name }
-        # #endregion
         Download-ModelWithProgress $engineExe $DataDir $modelId $name
     }
     return $true
@@ -1145,11 +1072,6 @@ $engineOkPreflight = Test-EngineInstalled $installDir
 # Phase 2 preflight: if engine already exists, verify BEFORE platform work (fail-safe, non-blocking).
 if ($engineOkPreflight) {
     Write-SetupLog "Preflight: AI engine stack check before platform install (fail-safe)..."
-    # #region agent log
-    Write-AgentDebugLog -HypothesisId "H1" -Location "ave-setup.ps1:preflight" -Message "engine verify before platform" -Data @{
-        engineOkPreflight = $true; failSafe = $failSafeVerify
-    }
-    # #endregion
     $engineVerified = Install-EngineVerifyPhase $installDir $dataDir $manifest -FailSafe:$failSafeVerify
 }
 
@@ -1178,11 +1100,6 @@ if ($plan.Count -gt 0) {
                 $archivePath = Join-Path $cache ("engine-" + [guid]::NewGuid().ToString("N") + "." + $item.archive)
                 try {
                     Download-FileWithProgress -Url $item.src -Destination $archivePath -Label $item.id -ApproxTotal $item.bytes
-                    # #region agent log
-                    Write-AgentDebugLog -HypothesisId "B" -Location "ave-setup.ps1:install" -Message "engine download complete" -Data @{
-                        archivePath = $archivePath; bytes = (Get-Item $archivePath).Length
-                    }
-                    # #endregion
                     if ($item.sha256) {
                         $hash = (Get-FileHash $archivePath -Algorithm SHA256).Hash.ToLower()
                         if ($hash -ne $item.sha256) {
@@ -1229,11 +1146,6 @@ $doAddons = ($InstallAddons -or ($PostInstall -and -not $SkipAddons))
 # Phase 2 post-platform: verify newly installed engine before large model downloads.
 if ($engineOk -and -not $engineVerified) {
     Write-SetupLog "Post-platform: AI engine stack check before model downloads (fail-safe)..."
-    # #region agent log
-    Write-AgentDebugLog -HypothesisId "H2" -Location "ave-setup.ps1:post-platform" -Message "engine verify before models" -Data @{
-        engineOk = $true; failSafe = $failSafeVerify
-    }
-    # #endregion
     $engineVerified = Install-EngineVerifyPhase $installDir $dataDir $manifest -FailSafe:$failSafeVerify
 }
 

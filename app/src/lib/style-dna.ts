@@ -76,7 +76,7 @@ export async function fetchMusicBrainzStyleHints(
   const url = `https://musicbrainz.org/ws/2/recording/?query=${encodeURIComponent(q)}&fmt=json&limit=1`;
   try {
     const res = await fetch(url, {
-      headers: { "User-Agent": "DjMAD-AI-Video-Tool/0.2.5 (style-dna)" },
+      headers: { "User-Agent": "DjMAD-AI-Video-Tool/0.2.6 (style-dna)" },
     });
     if (!res.ok) return null;
     const data = (await res.json()) as {

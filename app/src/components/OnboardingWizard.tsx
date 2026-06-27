@@ -45,55 +45,10 @@ export default function OnboardingWizard({
   async function finish() {
     if (finishing) return;
     setFinishing(true);
-    // #region agent log
-    fetch("http://127.0.0.1:7749/ingest/f9f520f5-e88c-4cbf-af23-d092d1cdeec3", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "d02589" },
-      body: JSON.stringify({
-        sessionId: "d02589",
-        hypothesisId: "C",
-        location: "OnboardingWizard.tsx:finish",
-        message: "Get started clicked",
-        data: { hasModel },
-        timestamp: Date.now(),
-        runId: "post-fix",
-      }),
-    }).catch(() => {});
-    // #endregion
     try {
       await api.completeOnboarding();
-      // #region agent log
-      fetch("http://127.0.0.1:7749/ingest/f9f520f5-e88c-4cbf-af23-d092d1cdeec3", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "d02589" },
-        body: JSON.stringify({
-          sessionId: "d02589",
-          hypothesisId: "A",
-          location: "OnboardingWizard.tsx:finish",
-          message: "completeOnboarding resolved",
-          data: {},
-          timestamp: Date.now(),
-          runId: "post-fix",
-        }),
-      }).catch(() => {});
-      // #endregion
       onDone();
     } catch (e) {
-      // #region agent log
-      fetch("http://127.0.0.1:7749/ingest/f9f520f5-e88c-4cbf-af23-d092d1cdeec3", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "d02589" },
-        body: JSON.stringify({
-          sessionId: "d02589",
-          hypothesisId: "B",
-          location: "OnboardingWizard.tsx:finish",
-          message: "completeOnboarding failed",
-          data: { error: String(e) },
-          timestamp: Date.now(),
-          runId: "post-fix",
-        }),
-      }).catch(() => {});
-      // #endregion
       onError(e);
       setFinishing(false);
     }

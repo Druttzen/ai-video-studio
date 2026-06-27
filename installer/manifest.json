@@ -3,8 +3,8 @@
   "product": "AI Video Tool",
   "release": {
     "github_repo": "Druttzen/ai-video-studio",
-    "engine_tag": "v0.2.5",
-    "tag": "v0.2.5",
+    "engine_tag": "v0.2.6",
+    "tag": "v0.2.6",
     "downloads": {
       "engine_win64": {
         "filename": "ave-engine-win64.7z",
@@ -85,7 +85,7 @@
       "github_zip": "https://github.com/Rudrabha/Wav2Lip/archive/refs/heads/master.zip",
       "zip_strip_prefix": "Wav2Lip-master",
       "checkpoint": {
-        "url": "https://huggingface.co/numz/wav2lip_studio/resolve/main/wav2lip_gan.pth",
+        "url": "https://huggingface.co/Nekochu/Wav2Lip/resolve/main/wav2lip_gan.pth",
         "dest": "checkpoints/wav2lip_gan.pth",
         "approx_bytes": 436000000
       },
