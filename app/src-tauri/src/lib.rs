@@ -1,5 +1,6 @@
 mod commands;
 mod engine;
+mod setup;
 
 use engine::EngineState;
 use tauri::{Manager, RunEvent, WindowEvent};
@@ -11,12 +12,10 @@ pub fn run() {
         .manage(EngineState::new())
         .setup(|app| {
             let handle = app.handle().clone();
-            // First launch without engine: open the component setup CMD wizard.
-            if !EngineState::sidecar_installed(&handle) {
-                let _ = EngineState::run_component_setup(&handle);
-            }
             let state = app.state::<EngineState>();
-            state.start(&handle);
+            if EngineState::sidecar_installed(&handle) {
+                state.start(&handle);
+            }
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -40,6 +39,11 @@ pub fn run() {
             commands::complete_onboarding,
             commands::open_folder,
             commands::reveal_in_explorer,
+            commands::app_bootstrap,
+            commands::setup_scan,
+            commands::setup_run,
+            commands::open_app_update,
+            commands::restart_engine,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

@@ -1,5 +1,64 @@
 import { invoke } from "@tauri-apps/api/core";
 
+export interface UpdateInfo {
+  available: boolean;
+  current_version: string;
+  latest_version: string;
+  release_url: string;
+  download_url: string | null;
+}
+
+export interface AppBootstrap {
+  app_version: string;
+  engine_installed: boolean;
+  update: UpdateInfo;
+}
+
+export interface SetupScanItem {
+  id: string;
+  action: string;
+  label: string;
+  bytes: number;
+  eta_minutes: number;
+}
+
+export interface SetupScanModel {
+  id: string;
+  name: string;
+  bytes: number;
+  eta_minutes: number;
+  eligible: boolean;
+  auto_download: boolean;
+}
+
+export interface SetupScan {
+  hardware: {
+    gpu_present: boolean;
+    gpu_name: string;
+    vram_gb: number;
+    webview2: boolean;
+    data_dir: string;
+    disks: { root: string; free_gb: number }[];
+  };
+  engine_installed: boolean;
+  items: SetupScanItem[];
+  models: SetupScanModel[];
+  total_bytes: number;
+  eta_minutes: number;
+  can_run: boolean;
+  blocked: string[];
+}
+
+export interface SetupProgress {
+  phase: string;
+  label: string;
+  percent: number;
+  done_bytes: number;
+  total_bytes: number;
+  eta_seconds: number;
+  message: string;
+}
+
 export interface RecommendedDefaults {
   preset: string;
   width: number;
@@ -160,6 +219,11 @@ export const KIND_LABELS: Record<string, string> = {
 };
 
 export const api = {
+  bootstrap: () => invoke<AppBootstrap>("app_bootstrap"),
+  setupScan: () => invoke<SetupScan>("setup_scan"),
+  setupRun: () => invoke<void>("setup_run"),
+  openAppUpdate: (url: string) => invoke<void>("open_app_update", { url }),
+  restartEngine: () => invoke<void>("restart_engine"),
   health: () => invoke<Health>("engine_health"),
   completeOnboarding: () => invoke<{ complete: boolean }>("complete_onboarding"),
   listModels: () => invoke<ModelStatus[]>("list_models"),

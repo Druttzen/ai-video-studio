@@ -9,10 +9,106 @@ param(
     [switch]$Quiet,
     [switch]$SkipLaunch,
     [string]$DownloadModels = "",
-    [switch]$SkipModels
+    [switch]$SkipModels,
+    [switch]$ScanOnly,
+    [switch]$EmitJson
 )
 
 $ErrorActionPreference = "Stop"
+$script:EmitJson = [bool]$EmitJson
+
+function Write-SetupLog([string]$Message) {
+    if ($script:EmitJson) {
+        Write-Output ("AVE_SETUP_LOG|$Message")
+    } else {
+        Write-Host $Message
+    }
+}
+
+function Estimate-EtaMinutes([long]$Bytes) {
+    if ($Bytes -le 0) { return 1 }
+    $rate = 40MB
+    return [math]::Max(1, [math]::Ceiling($Bytes / $rate / 60))
+}
+
+function Get-PlanItemLabel($Item) {
+    switch ($Item.action) {
+        "copy" { return "Copy AI engine" }
+        "download" { return "Download AI engine" }
+        "webview2_install" { return "Install WebView2 runtime" }
+        "mkdir" { return "Create data folder" }
+        "missing" { return "AI engine (missing)" }
+        default { return $Item.id }
+    }
+}
+
+function Export-SetupScanJson {
+    param(
+        $Gpu,
+        [array]$Disks,
+        [bool]$WebView2,
+        [string]$DataDir,
+        [bool]$EngineOk,
+        $Plan,
+        $Manifest,
+        [string]$DownloadModels
+    )
+    $items = @()
+    $totalBytes = [long]0
+    foreach ($item in $Plan) {
+        $bytes = if ($item.bytes) { [long]$item.bytes } else { 0 }
+        if ($item.action -eq "webview2_install") { $bytes = 150MB }
+        $items += @{
+            id = $item.id
+            action = $item.action
+            label = Get-PlanItemLabel $item
+            bytes = $bytes
+            eta_minutes = (Estimate-EtaMinutes $bytes)
+        }
+        $totalBytes += $bytes
+    }
+
+    $models = @()
+    if ($Manifest -and $Manifest.models -and (-not $EngineOk)) {
+        foreach ($meta in $Manifest.models) {
+            $bytes = [long]($meta.approx_size_gb * 1GB)
+            $eligible = Test-ModelEligible $meta $Gpu $Disks
+            $auto = $false
+            if ($eligible -and $meta.default -and ($DownloadModels -eq "default" -or -not $DownloadModels)) {
+                $auto = $true
+            }
+            $models += @{
+                id = $meta.id
+                name = $meta.name
+                bytes = $bytes
+                eta_minutes = (Estimate-EtaMinutes $bytes)
+                eligible = $eligible
+                auto_download = $auto
+            }
+            if ($auto) { $totalBytes += $bytes }
+        }
+    }
+
+    $blocked = @($Plan | Where-Object { $_.action -in @("missing", "manual") })
+    $scan = @{
+        hardware = @{
+            gpu_present = [bool]$Gpu.present
+            gpu_name = $Gpu.name
+            vram_gb = $Gpu.vram_gb
+            webview2 = $WebView2
+            data_dir = $DataDir
+            disks = @($Disks | ForEach-Object { @{ root = $_.Root; free_gb = $_.FreeGb } })
+        }
+        engine_installed = $EngineOk
+        items = $items
+        models = $models
+        total_bytes = $totalBytes
+        eta_minutes = (Estimate-EtaMinutes $totalBytes)
+        can_run = ($blocked.Count -eq 0) -or ($Plan | Where-Object { $_.action -in @("copy", "download", "webview2_install", "mkdir") }).Count -gt 0
+        blocked = @($blocked | ForEach-Object { $_.id })
+    }
+    Write-Output ("AVE_SETUP_JSON|" + ($scan | ConvertTo-Json -Compress -Depth 8))
+}
 
 function Write-Banner {
     Write-Host ""
@@ -38,6 +134,10 @@ function Format-Duration([double]$Seconds) {
 }
 
 function Write-ProgressLine([string]$Label, [double]$Pct, [long]$Done, [long]$Total, [double]$EtaSec) {
+    if ($script:EmitJson) {
+        Write-Output ("AVE_SETUP_PROGRESS|$Label|$Pct|$Done|$Total|$EtaSec|")
+        return
+    }
     $barWidth = 28
     $filled = [math]::Min($barWidth, [math]::Floor($Pct / 100 * $barWidth))
     $bar = ("#" * $filled).PadRight($barWidth, "-")
@@ -558,7 +658,7 @@ function Install-ModelsPhase([string]$InstallDir, [string]$DataDir, $Manifest, $
         return $true
     }
 
-    if (-not $Quiet -and -not $PostInstall) {
+    if (-not $Quiet -and -not $PostInstall -and -not $script:EmitJson) {
         Write-Host "Press Enter to start model downloads (Ctrl+C to cancel)..."
         [void][System.Console]::ReadLine()
     }
@@ -573,7 +673,7 @@ function Install-ModelsPhase([string]$InstallDir, [string]$DataDir, $Manifest, $
 
 # --- main ---
 
-Write-Banner
+if (-not $ScanOnly) { Write-Banner }
 
 $scriptRoot = Get-ScriptRoot
 $installDir = Resolve-InstallDir $InstDir
@@ -654,6 +754,12 @@ if ($plan.Count -eq 0) {
 }
 Write-Host ""
 
+if ($ScanOnly) {
+    Export-SetupScanJson -Gpu $gpu -Disks $disks -WebView2 $webview2 -DataDir $dataDir `
+        -EngineOk $engineOk -Plan $plan -Manifest $manifest -DownloadModels $DownloadModels
+    exit 0
+}
+
 $blocked = $plan | Where-Object { $_.action -in @("missing", "manual") }
 if ($blocked) {
     Write-Host "Cannot continue until manual items are resolved." -ForegroundColor Red
@@ -666,7 +772,7 @@ if ($blocked) {
 }
 
 if ($plan.Count -gt 0) {
-    if (-not $Quiet -and -not $PostInstall) {
+    if (-not $Quiet -and -not $PostInstall -and -not $script:EmitJson) {
         Write-Host "Press Enter to start installation (Ctrl+C to cancel)..."
         [void][System.Console]::ReadLine()
     }

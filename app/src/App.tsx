@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api, Health, JobStatus, ModelStatus } from "./api";
+import { api, AppBootstrap, Health, JobStatus, ModelStatus } from "./api";
 import Generate from "./components/Generate";
 import MusicVideo from "./components/MusicVideo";
 import Canvas from "./components/Canvas";
@@ -7,17 +7,20 @@ import Models from "./components/Models";
 import Library from "./components/Library";
 import Settings from "./components/Settings";
 import OnboardingWizard from "./components/OnboardingWizard";
+import SetupConsole from "./components/SetupConsole";
 import { ActiveJobStrip } from "./components/shared";
 
 type Tab = "generate" | "musicvideo" | "canvas" | "models" | "library" | "settings";
 
 export default function App() {
   const [tab, setTab] = useState<Tab>("generate");
+  const [boot, setBoot] = useState<AppBootstrap | null>(null);
   const [health, setHealth] = useState<Health | null>(null);
   const [models, setModels] = useState<ModelStatus[]>([]);
   const [jobs, setJobs] = useState<JobStatus[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [booting, setBooting] = useState(true);
+  const [needsSetup, setNeedsSetup] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
 
   const showError = useCallback((e: unknown) => {
@@ -26,6 +29,27 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    let alive = true;
+    api
+      .bootstrap()
+      .then((b) => {
+        if (!alive) return;
+        setBoot(b);
+        if (!b.engine_installed) {
+          setNeedsSetup(true);
+          setBooting(false);
+        }
+      })
+      .catch((e) => {
+        if (alive) showError(e);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [showError]);
+
+  useEffect(() => {
+    if (!boot?.engine_installed || needsSetup) return;
     let alive = true;
     const tryHealth = async () => {
       try {
@@ -42,6 +66,12 @@ export default function App() {
     return () => {
       alive = false;
     };
+  }, [boot?.engine_installed, needsSetup]);
+
+  const handleSetupComplete = useCallback(() => {
+    setNeedsSetup(false);
+    setBooting(true);
+    setBoot((b) => (b ? { ...b, engine_installed: true } : b));
   }, []);
 
   const hasActiveJob = useMemo(
@@ -50,7 +80,7 @@ export default function App() {
   );
 
   useEffect(() => {
-    if (booting) return;
+    if (booting || needsSetup) return;
     let alive = true;
     const interval = hasActiveJob ? 600 : 1500;
 
@@ -69,7 +99,7 @@ export default function App() {
     return () => {
       alive = false;
     };
-  }, [booting, hasActiveJob]);
+  }, [booting, needsSetup, hasActiveJob]);
 
   const activeJob = useMemo(
     () =>
@@ -82,8 +112,21 @@ export default function App() {
   const dev = health?.device;
   const backendBadge = dev?.backend === "cuda" ? "good" : "warn";
 
+  const updateUrl =
+    boot?.update.download_url ?? boot?.update.release_url ?? "";
+
   return (
     <div className="app">
+      {boot?.update.available && (
+        <button
+          type="button"
+          className="update-now-btn"
+          onClick={() => api.openAppUpdate(updateUrl)}
+        >
+          Update now — v{boot.update.latest_version}
+        </button>
+      )}
+
       <aside className="sidebar">
         <div className="brand">
           <img src="/djmad-logo.png" alt="Dj MAD" className="brand-logo" />
@@ -105,6 +148,7 @@ export default function App() {
               key={id}
               className={tab === id ? "active" : ""}
               onClick={() => setTab(id)}
+              disabled={needsSetup || booting}
             >
               {label}
               {hasActiveJob && id === "library" && <span className="nav-dot" />}
@@ -117,8 +161,8 @@ export default function App() {
         <div className="device-card">
           <div className="row">
             <span className="label">Engine</span>
-            <span className={`badge ${health ? "good" : "warn"}`}>
-              {booting ? "starting…" : "ready"}
+            <span className={`badge ${needsSetup ? "warn" : health ? "good" : "warn"}`}>
+              {needsSetup ? "setup" : booting ? "starting…" : "ready"}
             </span>
           </div>
           <div className="row">
@@ -147,7 +191,9 @@ export default function App() {
       </aside>
 
       <main className="main">
-        {booting ? (
+        {needsSetup ? (
+          <SetupConsole onComplete={handleSetupComplete} onError={showError} />
+        ) : booting ? (
           <div className="boot-screen">
             <img src="/djmad-logo.png" alt="" aria-hidden />
             <p>Starting engine…</p>

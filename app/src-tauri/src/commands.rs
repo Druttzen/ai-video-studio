@@ -1,9 +1,36 @@
 //! Tauri commands: thin async proxies from the UI to the Python engine.
 
 use serde_json::Value;
-use tauri::State;
+use tauri::{AppHandle, State};
 
 use crate::engine::EngineState;
+use crate::setup::{self, AppBootstrap};
+
+#[tauri::command]
+pub async fn app_bootstrap(app: AppHandle) -> Result<AppBootstrap, String> {
+    setup::bootstrap(app).await
+}
+
+#[tauri::command]
+pub fn setup_scan(app: AppHandle) -> Result<Value, String> {
+    setup::setup_scan(&app)
+}
+
+#[tauri::command]
+pub async fn setup_run(app: AppHandle) -> Result<(), String> {
+    setup::setup_run(app).await
+}
+
+#[tauri::command]
+pub fn open_app_update(url: String) -> Result<(), String> {
+    setup::open_update_url(url)
+}
+
+#[tauri::command]
+pub fn restart_engine(app: AppHandle, engine: State<'_, EngineState>) {
+    engine.shutdown();
+    engine.start(&app);
+}
 
 #[tauri::command]
 pub async fn engine_health(engine: State<'_, EngineState>) -> Result<Value, String> {

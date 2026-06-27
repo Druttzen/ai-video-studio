@@ -1,9 +1,7 @@
 ; NSIS installer hooks for AI Video Tool setup and full uninstall.
 
 !macro NSIS_HOOK_POSTINSTALL
-  DetailPrint "Starting AI Video Tool component setup..."
-  ; $EXEDIR = folder where install.exe was run (often contains payload\ave-engine)
-  ExecWait '"$COMSPEC" /c start "AI Video Tool Setup" /wait "$INSTDIR\resources\installer\ave-setup.cmd" --postinstall --inst-dir "$INSTDIR" --source "$EXEDIR" --DownloadModels default'
+  DetailPrint "Installation complete. Open AI Video Tool to run the in-app setup console."
 !macroend
 
 !macro NSIS_HOOK_PREUNINSTALL
