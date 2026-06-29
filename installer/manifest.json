@@ -11,7 +11,7 @@
         "archive": "7z",
         "folder": "ave-engine",
         "approx_size_gb": 1.6,
-        "sha256": "6f5204142cc47727de65eaa9ee5d74bab453d155bc63a72f42b60e7e2b8ccbd0"
+        "sha256": "1709aaf199e0b9d8215f4b85076f2c6f0c3792de1c93609632d2c0eefff02e2b"
       },
       "webview2_bootstrapper": {
         "url": "https://go.microsoft.com/fwlink/p/?LinkId=2124703",

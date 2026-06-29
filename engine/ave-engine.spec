@@ -6,9 +6,34 @@
 #
 # Build with:  pyinstaller ave-engine.spec  (from the engine/ directory)
 
-from PyInstaller.utils.hooks import collect_all, collect_submodules
+from PyInstaller.utils.hooks import collect_all, collect_submodules, copy_metadata
 
 datas, binaries, hiddenimports = [], [], []
+
+# importlib.metadata lookups (e.g. diffusers → requests) need .dist-info in the frozen bundle.
+for meta_pkg in (
+    "requests",
+    "urllib3",
+    "certifi",
+    "charset_normalizer",
+    "idna",
+    "packaging",
+    "filelock",
+    "tqdm",
+    "regex",
+    "tokenizers",
+    "safetensors",
+    "protobuf",
+    "tiktoken",
+    "huggingface_hub",
+    "transformers",
+    "diffusers",
+    "accelerate",
+):
+    try:
+        datas += copy_metadata(meta_pkg)
+    except Exception:
+        pass
 
 for pkg in (
     "torch",
@@ -17,6 +42,7 @@ for pkg in (
     "accelerate",
     "safetensors",
     "huggingface_hub",
+    "requests",
     "imageio",
     "imageio_ffmpeg",
     "cv2",
